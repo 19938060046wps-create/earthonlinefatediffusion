@@ -173,7 +173,11 @@ export const LoginScreen = React.memo<LoginScreenProps>(({ onLogin, mode = 'inpu
             50% { transform: translate(-10px, 15px); }
             100% { transform: translate(0, 0); }
         }
-
+        /* WeChat Compatibility */
+        body.is-wechat .login-logo {
+          padding-top: 64px; /* Extra offset for WeChat specific header */
+          padding-top: calc(64px + env(safe-area-inset-top)); 
+        }
       `}</style>
 
       {/* Background Particles - Persistent across states */}
@@ -210,7 +214,7 @@ export const LoginScreen = React.memo<LoginScreenProps>(({ onLogin, mode = 'inpu
 
         {/* Logo Container - Handles position transition */}
         <motion.div
-          className="absolute inset-x-0 flex flex-col items-center justify-center z-30"
+          className="absolute inset-x-0 flex flex-col items-center justify-center z-30 login-logo"
           initial={false}
           animate={{
             top: isSplash ? "40%" : "15%", // Adjust top position

@@ -12,9 +12,13 @@ from utils.prompts import EOGF_SYSTEM_PROMPT
 
 # 配置 Gemini API
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-print(f"[AI_SERVICE] GEMINI_API_KEY loaded: {GEMINI_API_KEY[:20] if GEMINI_API_KEY else 'NOT SET'}...")
+
+# 安全日志
 if GEMINI_API_KEY:
+    print(f"[AI_SERVICE] GEMINI_API_KEY loaded: {'YES' if GEMINI_API_KEY else 'NO'}")
     genai.configure(api_key=GEMINI_API_KEY)
+else:
+    print("[AI_SERVICE] WARNING: GEMINI_API_KEY is NOT set")
 
 # 系统提示词 (System Prompt)
 SYSTEM_PROMPT = EOGF_SYSTEM_PROMPT
@@ -37,10 +41,11 @@ def generate_ai_response(chart_data: Optional[dict], user_message: str) -> str:
     :param user_message: 用户消息
     :return: AI 回复文本
     """
-    try:
         model = get_gemini_model()
         if not model:
-            return "系统配置错误：未找到 Gemini API Key。请联系管理员配置。"
+            # Mask the error for the user, but log it
+            print("[AI_SERVICE] CRITICAL: GEMINI_API_KEY missing")
+            raise ValueError("SYSTEM_CONFIG_ERROR: 403") # Signal 403/401
         
         # 构造完整的 Prompt
         is_benchmark = "分析命盘" in user_message
@@ -81,8 +86,17 @@ def generate_ai_response(chart_data: Optional[dict], user_message: str) -> str:
         return response.text
         
     except Exception as e:
-        print(f"Gemini API 调用失败: {e}")
-        return "抱歉，大师现在正在闭关（AI 服务暂时无法连接），请稍后再试或联系管理员。"
+        error_str = str(e)
+        print(f"[AI_SERVICE] Gemini API Error: {error_str}") # Log the error but ensure no key leak naturally
+        
+        if "401" in error_str or "403" in error_str:
+            raise ValueError("AUTH_ERROR: 403")
+        elif "429" in error_str:
+            raise ValueError("RATE_LIMIT: 429")
+        elif "504" in error_str or "timed out" in error_str.lower():
+            raise ValueError("TIMEOUT: 504")
+        else:
+            raise ValueError(f"INTERNAL_ERROR: 500")
 
 def save_chat_message(history_id: str, text: str, is_user: bool) -> dict:
     """
@@ -158,22 +172,17 @@ def process_chat_message(user_id: str, history_id: str, message: str) -> dict:
     save_chat_message(history_id, message, True)
     
     # 4. 生成 AI 回复
-    ai_text = generate_ai_response(chart_data, message)
-    
-    # 5. 检测 AI 调用是否失败，如果失败则返还用户算力
-    # NOTE: 通过检测错误关键词判断 AI 是否返回了错误信息
-    error_keywords = [
-        "系统配置错误",
-        "未找到 Gemini API Key",
-        "AI 服务暂时无法连接",
-        "请联系管理员"
-    ]
-    is_ai_error = any(keyword in ai_text for keyword in error_keywords)
-    
-    if is_ai_error:
-        # 返还用户 50 算力
+    try:
+        ai_text = generate_ai_response(chart_data, message)
+    except ValueError as e:
+        # 5. 检测 AI 调用失败，返还用户算力
+        # 捕获 generate_ai_response 抛出的明确错误
         updated_user = update_user_balance(user_id, 50)
-        print(f"[REFUND] 用户 {user_id} 因 AI 调用失败已返还 50 算力")
+        print(f"[REFUND] 用户 {user_id} 因 AI 调用失败 ({str(e)}) 已返还 50 算力")
+        raise e  # Re-raise to let API layer handle status code
+
+    # 6. 保存 AI 回复 (只有成功时才保存)
+    ai_msg = save_chat_message(history_id, ai_text, False)
     
     # 6. 保存 AI 回复
     ai_msg = save_chat_message(history_id, ai_text, False)

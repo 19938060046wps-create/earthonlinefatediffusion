@@ -27,6 +27,11 @@ dist-ssr
 backend/__pycache__/
 backend/uploads/
 backend/.env
+backend/.env.*
+.env
+.env.*
+*.env
+*.env.*
 backend/.venv
 *.pyc
 

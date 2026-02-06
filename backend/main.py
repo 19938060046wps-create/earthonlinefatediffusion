@@ -9,7 +9,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 
 # 加载环境变量
-load_dotenv()
+# 加载环境变量
+# 显式指定 backend/.env 路径，防止在根目录运行 python backend/main.py 时找不到配置
+load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
 
 # 导入 API 路由
 from api.auth import router as auth_router

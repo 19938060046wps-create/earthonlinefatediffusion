@@ -45,6 +45,12 @@ const App: React.FC = () => {
     } else {
       root.classList.remove('dark');
     }
+
+    // WeChat / H5 Compat
+    const ua = navigator.userAgent.toLowerCase();
+    if (ua.includes('micromessenger')) {
+      document.body.classList.add('is-wechat');
+    }
   }, [user.theme]);
 
   // 尝试恢复登录状态 (Auth Check)

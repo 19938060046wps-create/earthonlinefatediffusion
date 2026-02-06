@@ -38,7 +38,23 @@ async def send_message(
             balance=result["balance"]
         )
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        error_msg = str(e)
+        status_code = 500
+        
+        if "AUTH_ERROR: 403" in error_msg or "SYSTEM_CONFIG_ERROR: 403" in error_msg:
+            status_code = 403
+            detail = "AI 服务权限校验失败，请联系管理员"
+        elif "RATE_LIMIT: 429" in error_msg:
+            status_code = 429
+            detail = "AI 服务请求过于频繁，请稍后再试"
+        elif "TIMEOUT: 504" in error_msg:
+            status_code = 504
+            detail = "AI 服务响应超时"
+        else:
+            status_code = 500
+            detail = f"AI 服务内部错误: {error_msg}"
+            
+        raise HTTPException(status_code=status_code, detail=detail)
 
 
 @router.get("/{history_id}/messages", response_model=ChatHistoryResponse, summary="获取对话历史")
