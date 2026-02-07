@@ -737,7 +737,6 @@ export const ConsoleScreen = React.memo<ConsoleScreenProps>(({ setFullScreen, ba
   };
 
   const renderDatePicker = () => {
-    if (!isDatePickerOpen) return null;
     const years = Array.from({ length: 170 }, (_, i) => 1930 + i);
     const months = Array.from({ length: 12 }, (_, i) => i + 1);
     const days = Array.from({ length: 31 }, (_, i) => i + 1);
@@ -781,103 +780,131 @@ export const ConsoleScreen = React.memo<ConsoleScreenProps>(({ setFullScreen, ba
     );
 
     return (
-      <div className="fixed inset-0 z-[100] flex flex-col justify-end bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
-        <div className="bg-white dark:bg-[#1E1E1E] rounded-t-3xl p-6 pb-10 mb-20 animate-in slide-in-from-bottom duration-300 shadow-2xl">
-          <div className="flex justify-between items-center mb-6">
-            <h3 className="text-lg font-bold text-gray-900 dark:text-white">选择出生时间</h3>
-            <div className="flex bg-gray-100 dark:bg-white/10 rounded-lg p-1">
-              <span className="px-3 py-1 text-xs rounded-md font-medium bg-white dark:bg-white/20 shadow-sm text-primary">公历</span>
-            </div>
-          </div>
-          <div className="flex gap-1.5 mb-6">
-            {renderColumn('年', years, 'year', yearListRef)}
-            {renderColumn('月', months, 'month', monthListRef)}
-            {renderColumn('日', days, 'day', dayListRef)}
-            {renderColumn('时', hours, 'hour', hourListRef)}
-            {renderColumn('分', minutes, 'minute', minuteListRef)}
-          </div>
-          <div className="flex gap-4">
-            <button onClick={() => setDatePickerOpen(false)} className="flex-1 py-3 rounded-xl bg-gray-100 dark:bg-white/10 font-bold text-gray-500 dark:text-gray-400 active:scale-95 transition-transform">取消</button>
-            <button onClick={() => { setBirthDate(tempDate); setDatePickerOpen(false); }} className="flex-1 py-3 rounded-xl bg-primary text-white font-bold shadow-lg shadow-amber-500/20 active:scale-95 transition-transform">确认</button>
-          </div>
-        </div>
-      </div>
+      <AnimatePresence>
+        {isDatePickerOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] flex flex-col justify-end bg-black/50 backdrop-blur-sm"
+          >
+            <motion.div
+              initial={{ y: "100%" }}
+              animate={{ y: 0 }}
+              exit={{ y: "100%" }}
+              transition={{ ease: [0.32, 0.72, 0, 1], duration: 0.4 }}
+              className="bg-white dark:bg-[#1E1E1E] rounded-t-3xl p-6 pb-8 shadow-2xl"
+            >
+              <div className="flex justify-between items-center mb-6">
+                <h3 className="text-lg font-bold text-gray-900 dark:text-white">选择出生时间</h3>
+                <div className="flex bg-gray-100 dark:bg-white/10 rounded-lg p-1">
+                  <span className="px-3 py-1 text-xs rounded-md font-medium bg-white dark:bg-white/20 shadow-sm text-primary">公历</span>
+                </div>
+              </div>
+              <div className="flex gap-1.5 mb-6">
+                {renderColumn('年', years, 'year', yearListRef)}
+                {renderColumn('月', months, 'month', monthListRef)}
+                {renderColumn('日', days, 'day', dayListRef)}
+                {renderColumn('时', hours, 'hour', hourListRef)}
+                {renderColumn('分', minutes, 'minute', minuteListRef)}
+              </div>
+              <div className="flex gap-4">
+                <button onClick={() => setDatePickerOpen(false)} className="flex-1 py-3 rounded-xl bg-gray-100 dark:bg-white/10 font-bold text-gray-500 dark:text-gray-400 active:scale-95 transition-transform">取消</button>
+                <button onClick={() => { setBirthDate(tempDate); setDatePickerOpen(false); }} className="flex-1 py-3 rounded-xl bg-primary text-white font-bold shadow-lg shadow-amber-500/20 active:scale-95 transition-transform">确认</button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     );
   };
 
   const renderLocationPicker = () => {
-    if (!isLocationPickerOpen) return null;
-
     // Get lists based on current selection
     const cityList = getCitiesOfProvince(tempLocation.province);
     const districtList = getDistrictsOfCity(tempLocation.province, tempLocation.city);
 
     return (
-      <div className="fixed inset-0 z-[100] flex flex-col justify-end bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
-        <div className="bg-white dark:bg-[#1E1E1E] rounded-t-3xl p-6 pb-10 mb-20 animate-in slide-in-from-bottom duration-300">
-          <h3 className="text-lg font-bold mb-6 text-gray-900 dark:text-white">选择出生地点</h3>
-          <div className="flex gap-2 mb-6 h-56">
-            {/* Province Column */}
-            <div className="flex-1 bg-gray-50 dark:bg-black/20 rounded-xl overflow-y-auto hide-scrollbar p-2">
-              {CHINA_REGIONS.map(p => (
-                <div key={p.name}
-                  onClick={() => {
-                    const firstCity = p.children?.[0];
-                    const firstDist = firstCity?.children?.[0];
-                    setTempLocation({
-                      province: p.name,
-                      city: firstCity?.name || '',
-                      district: firstDist?.name || '',
-                      lat: firstDist?.lat,
-                      lng: firstDist?.lng
-                    });
-                  }}
-                  className={`py-2.5 px-2 text-xs text-center rounded-lg mb-1 transition-colors ${tempLocation.province === p.name ? 'bg-white dark:bg-white/20 shadow-sm font-bold text-primary' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/5'}`}
-                >
-                  {p.name}
+      <AnimatePresence>
+        {isLocationPickerOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] flex flex-col justify-end bg-black/50 backdrop-blur-sm"
+          >
+            <motion.div
+              initial={{ y: "100%" }}
+              animate={{ y: 0 }}
+              exit={{ y: "100%" }}
+              transition={{ ease: [0.32, 0.72, 0, 1], duration: 0.4 }}
+              className="bg-white dark:bg-[#1E1E1E] rounded-t-3xl p-6 pb-8 shadow-2xl"
+            >
+              <h3 className="text-lg font-bold mb-6 text-gray-900 dark:text-white">选择出生地点</h3>
+              <div className="flex gap-2 mb-6 h-56">
+                {/* Province Column */}
+                <div className="flex-1 bg-gray-50 dark:bg-black/20 rounded-xl overflow-y-auto hide-scrollbar p-2">
+                  {CHINA_REGIONS.map(p => (
+                    <div key={p.name}
+                      onClick={() => {
+                        const firstCity = p.children?.[0];
+                        const firstDist = firstCity?.children?.[0];
+                        setTempLocation({
+                          province: p.name,
+                          city: firstCity?.name || '',
+                          district: firstDist?.name || '',
+                          lat: firstDist?.lat,
+                          lng: firstDist?.lng
+                        });
+                      }}
+                      className={`py-2.5 px-2 text-xs text-center rounded-lg mb-1 transition-colors ${tempLocation.province === p.name ? 'bg-white dark:bg-white/20 shadow-sm font-bold text-primary' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/5'}`}
+                    >
+                      {p.name}
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
 
-            {/* City Column */}
-            <div className="flex-1 bg-gray-50 dark:bg-black/20 rounded-xl overflow-y-auto hide-scrollbar p-2">
-              {cityList.map(c => (
-                <div key={c.name}
-                  onClick={() => {
-                    const firstDist = c.children?.[0];
-                    setTempLocation({
-                      ...tempLocation,
-                      city: c.name,
-                      district: firstDist?.name || '',
-                      lat: firstDist?.lat,
-                      lng: firstDist?.lng
-                    });
-                  }}
-                  className={`py-2.5 px-2 text-xs text-center rounded-lg mb-1 transition-colors ${tempLocation.city === c.name ? 'bg-white dark:bg-white/20 shadow-sm font-bold text-primary' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/5'}`}
-                >
-                  {c.name}
+                {/* City Column */}
+                <div className="flex-1 bg-gray-50 dark:bg-black/20 rounded-xl overflow-y-auto hide-scrollbar p-2">
+                  {cityList.map(c => (
+                    <div key={c.name}
+                      onClick={() => {
+                        const firstDist = c.children?.[0];
+                        setTempLocation({
+                          ...tempLocation,
+                          city: c.name,
+                          district: firstDist?.name || '',
+                          lat: firstDist?.lat,
+                          lng: firstDist?.lng
+                        });
+                      }}
+                      className={`py-2.5 px-2 text-xs text-center rounded-lg mb-1 transition-colors ${tempLocation.city === c.name ? 'bg-white dark:bg-white/20 shadow-sm font-bold text-primary' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/5'}`}
+                    >
+                      {c.name}
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
 
-            {/* District Column */}
-            <div className="flex-1 bg-gray-50 dark:bg-black/20 rounded-xl overflow-y-auto hide-scrollbar p-2">
-              {districtList.map(d => (
-                <div key={d.name}
-                  onClick={() => setTempLocation({ ...tempLocation, district: d.name, lat: d.lat, lng: d.lng })}
-                  className={`py-2.5 px-2 text-xs text-center rounded-lg mb-1 transition-colors ${tempLocation.district === d.name ? 'bg-white dark:bg-white/20 shadow-sm font-bold text-primary' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/5'}`}
-                >
-                  {d.name}
+                {/* District Column */}
+                <div className="flex-1 bg-gray-50 dark:bg-black/20 rounded-xl overflow-y-auto hide-scrollbar p-2">
+                  {districtList.map(d => (
+                    <div key={d.name}
+                      onClick={() => setTempLocation({ ...tempLocation, district: d.name, lat: d.lat, lng: d.lng })}
+                      className={`py-2.5 px-2 text-xs text-center rounded-lg mb-1 transition-colors ${tempLocation.district === d.name ? 'bg-white dark:bg-white/20 shadow-sm font-bold text-primary' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/5'}`}
+                    >
+                      {d.name}
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-          </div>
-          <div className="flex gap-4">
-            <button onClick={() => setLocationPickerOpen(false)} className="flex-1 py-3 rounded-xl bg-gray-100 dark:bg-white/10 font-bold text-gray-500 dark:text-gray-400">取消</button>
-            <button onClick={() => { setLocation(tempLocation); setLocationPickerOpen(false); }} className="flex-1 py-3 rounded-xl bg-primary text-white font-bold shadow-lg shadow-amber-500/20">确认</button>
-          </div>
-        </div>
-      </div>
+              </div>
+              <div className="flex gap-4">
+                <button onClick={() => setLocationPickerOpen(false)} className="flex-1 py-3 rounded-xl bg-gray-100 dark:bg-white/10 font-bold text-gray-500 dark:text-gray-400">取消</button>
+                <button onClick={() => { setLocation(tempLocation); setLocationPickerOpen(false); }} className="flex-1 py-3 rounded-xl bg-primary text-white font-bold shadow-lg shadow-amber-500/20">确认</button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     );
   };
 
@@ -1464,6 +1491,8 @@ export const ConsoleScreen = React.memo<ConsoleScreenProps>(({ setFullScreen, ba
         )
       }
       {renderLogoutConfirmModal()}
+      {renderDatePicker()}
+      {renderLocationPicker()}
 
       {/* Context Menu Removed */}
 
