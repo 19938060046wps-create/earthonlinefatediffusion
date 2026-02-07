@@ -6,7 +6,7 @@ import html2canvas from 'html2canvas';
 
 interface DetailedChartScreenProps {
     chart: BaZiChart;
-    birthYear: number;
+    birthDate: Date;
     gender: 'male' | 'female';
     onClose: () => void;
     username?: string;
@@ -57,7 +57,7 @@ const getElementColorStyle = (stem: string, branch: string, isSelected: boolean)
     }
 };
 
-export const DetailedChartScreen: React.FC<DetailedChartScreenProps> = ({ chart, birthYear, gender, onClose, username, avatar }) => {
+export const DetailedChartScreen: React.FC<DetailedChartScreenProps> = ({ chart, birthDate, gender, onClose, username, avatar }) => {
     const [selectedDaYunIndex, setSelectedDaYunIndex] = useState<number | null>(null);
     const [selectedLiuNianIndex, setSelectedLiuNianIndex] = useState<number | null>(null);
     const [showShareModal, setShowShareModal] = useState(false);
@@ -86,7 +86,7 @@ export const DetailedChartScreen: React.FC<DetailedChartScreenProps> = ({ chart,
         }
     };
 
-    const daYun = getDaYun(chart.year.gan, chart.month.gan, chart.month.zhi, gender, birthYear);
+    const daYun = getDaYun(chart.year.gan, chart.month.gan, chart.month.zhi, gender, birthDate);
     const currentDaYun = selectedDaYunIndex !== null ? daYun[selectedDaYunIndex] : null;
     const liuNianList = currentDaYun ? Array.from({ length: 10 }, (_, i) => {
         const year = currentDaYun.year + i;
@@ -113,7 +113,7 @@ export const DetailedChartScreen: React.FC<DetailedChartScreenProps> = ({ chart,
                 <div className="text-center">
                     <h1 className="text-base font-bold">排盘详情</h1>
                     <p className="text-[10px] text-gray-500">
-                        {gender === 'male' ? '乾造' : '坤造'} · {birthYear}年
+                        {gender === 'male' ? '乾造' : '坤造'} · {birthDate.getFullYear()}年
                     </p>
                 </div>
                 <button onClick={() => setShowShareModal(true)} className="p-2 -mr-2 text-gray-600 dark:text-gray-400 hover:text-black dark:hover:text-white"><Share2 size={20} /></button>

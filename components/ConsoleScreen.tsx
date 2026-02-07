@@ -1,10 +1,12 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Zap, ChevronLeft, ChevronDown, ArrowUp, Gem, Trees, Waves, Flame, Mountain, X, Crown } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { ArrowUp, ChevronLeft, ChevronDown, Trophy, History, Settings, Share2, MoreHorizontal, User, Sparkles, Zap, PlusCircle, Crown, Camera, Edit2, Trash2, X, Search, Check, Copy, Loader2, Type, AlertTriangle } from 'lucide-react';
 import { CHINA_REGIONS, getCitiesOfProvince, getDistrictsOfCity, Region } from '../utils/china_regions';
 import { calculateBaZi, BaZiChart, getDaYun, getElement } from '../utils/bazi';
 import { BaZiData, ChatMessage, HistoryItem } from '../types';
 import { DetailedChartScreen } from './DetailedChartScreen';
+import { ProfileScreen } from './ProfileScreen';
 import { createHistory, sendChatMessage, CreateHistoryRequest, getCurrentUser } from '../utils/api';
 import ReactMarkdown from 'react-markdown';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -23,6 +25,7 @@ interface ConsoleScreenProps {
   onBackToProfile?: () => void; // 从历史记录打开时，返回个人中心
   username?: string;
   avatar?: string;
+  onLogout?: () => void;
 }
 
 const QuantumIcon = () => (
@@ -47,7 +50,7 @@ const ElementText = ({ char }: { char: string }) => {
   return <span className={colorClass}>{char}</span>;
 }
 
-export const ConsoleScreen = React.memo<ConsoleScreenProps>(({ setFullScreen, balance, deductBalance, setBalanceDirectly, onAnalysisComplete, userGender, onRecharge, initialHistoryContext, onUpdateHistoryChat, onBackToProfile, username, avatar }) => {
+export const ConsoleScreen = React.memo<ConsoleScreenProps>(({ setFullScreen, balance, deductBalance, setBalanceDirectly, onAnalysisComplete, userGender, onRecharge, initialHistoryContext, onUpdateHistoryChat, onBackToProfile, username, avatar, onLogout }) => {
   const [analyzing, setAnalyzing] = useState(false);
   const [showResult, setShowResult] = useState(false);
   const [showDetailModal, setShowDetailModal] = useState(false);
@@ -80,12 +83,31 @@ export const ConsoleScreen = React.memo<ConsoleScreenProps>(({ setFullScreen, ba
   const [hasBenchmarkStarted, setHasBenchmarkStarted] = useState(false); // 是否已开始基准测试
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
+  // Profile State
+  const [isProfileOpen, setIsProfileOpen] = useState(false);
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+
+  // Search State
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [searchMatches, setSearchMatches] = useState<{ id: string; idx: number }[]>([]);
+  const [currentMatchIndex, setCurrentMatchIndex] = useState(-1);
+
+  // Message Interaction State
+  // Message Interaction State removed as per request (native copy)
+
+  // Copy State
+  const [copyTooltip, setCopyTooltip] = useState<{ id: number, x: number, y: number, text: string } | null>(null);
+
+
   const chatEndRef = useRef<HTMLDivElement>(null);
   const yearListRef = useRef<HTMLDivElement>(null);
   const monthListRef = useRef<HTMLDivElement>(null);
   const dayListRef = useRef<HTMLDivElement>(null);
   const hourListRef = useRef<HTMLDivElement>(null);
   const minuteListRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   const isScrollingRef = useRef(false);
 
@@ -100,6 +122,7 @@ export const ConsoleScreen = React.memo<ConsoleScreenProps>(({ setFullScreen, ba
 
 
 
+  // 日期选择器打开时，滚动到当前选中的值
   // 日期选择器打开时，滚动到当前选中的值
   useEffect(() => {
     if (isDatePickerOpen) {
@@ -229,10 +252,88 @@ export const ConsoleScreen = React.memo<ConsoleScreenProps>(({ setFullScreen, ba
       return () => clearTimeout(timer);
     }
   }, [toastMessage]);
-
   const showToast = (msg: string) => setToastMessage(msg);
 
-  // ---------------------------------------------
+  // ---------------- Search Logic
+  useEffect(() => {
+    if (!searchTerm.trim()) {
+      setSearchMatches([]);
+      setCurrentMatchIndex(-1);
+      return;
+    }
+
+    const matches: { id: string; idx: number }[] = [];
+    messages.forEach(msg => {
+      // Find all occurrences in the message - Using improved regex for global search
+      if (!searchTerm.trim()) return;
+      try {
+        const regex = new RegExp(searchTerm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+        let match;
+        let i = 0;
+        // Reset lastIndex because execute is stateful with global tag
+        while ((match = regex.exec(msg.text)) !== null) {
+          matches.push({ id: msg.id.toString(), idx: i });
+          i++;
+        }
+      } catch (e) {
+        // Fallback or ignore invalid regex
+      }
+    });
+
+    setSearchMatches(matches);
+    if (matches.length > 0) {
+      setCurrentMatchIndex(0);
+      // Auto jump to first match immediately
+      setTimeout(() => {
+        scrollToMatch(0, matches);
+      }, 50); // Slightly faster response
+    } else {
+      setCurrentMatchIndex(-1);
+    }
+  }, [searchTerm, messages]);
+
+  // Enhanced Scroll to Match
+  const scrollToMatch = (index: number, matches: { id: string; idx: number }[] = searchMatches) => {
+    if (index >= 0 && index < matches.length) {
+      const match = matches[index];
+      const msgEl = document.getElementById(`msg-${match.id}`);
+
+      if (msgEl) {
+        // Find the specific match element by index within the message
+        const matchEls = msgEl.getElementsByClassName('highlight-match');
+        const el = matchEls[match.idx] as HTMLElement;
+
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          // Flash effect
+          el.classList.add('ring-4', 'ring-amber-500/50');
+          setTimeout(() => el.classList.remove('ring-4', 'ring-amber-500/50'), 1000);
+        } else {
+          // Fallback to message container
+          msgEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          msgEl.classList.add('ring-4', 'ring-amber-500/50');
+          setTimeout(() => msgEl.classList.remove('ring-4', 'ring-amber-500/50'), 1000);
+        }
+      }
+      setCurrentMatchIndex(index);
+    }
+  };
+
+  const traverseSearch = (direction: 'next' | 'prev') => {
+    if (searchMatches.length === 0) return;
+    let newIndex = direction === 'next' ? currentMatchIndex + 1 : currentMatchIndex - 1;
+    if (newIndex >= searchMatches.length) newIndex = 0;
+    if (newIndex < 0) newIndex = searchMatches.length - 1;
+    scrollToMatch(newIndex);
+  };
+
+  const confirmLogout = () => {
+    if (onLogout) {
+      setShowLogoutConfirm(false);
+      onLogout();
+    }
+  };
+
 
   // Restore state from history context if present
   useEffect(() => {
@@ -265,17 +366,24 @@ export const ConsoleScreen = React.memo<ConsoleScreenProps>(({ setFullScreen, ba
           if (response.messages && response.messages.length > 0) {
             // 转换后端格式为前端格式
             const msgs = response.messages
-              .filter((msg: any) => {
-                // 更稳健的过滤逻辑: 隐藏包含"分析命盘"且内容较长的指令消息
-                const isBenchmarkInstruction = msg.text.includes('分析命盘') && msg.text.length > 20;
-                return !isBenchmarkInstruction;
-              })
               .map((msg: any) => ({
-                id: msg.id || Date.now(),
+                id: msg.id,
                 text: msg.text,
                 isUser: msg.is_user,
                 timestamp: new Date(msg.created_at).getTime()
-              }));
+              }))
+              .filter((msg: any) => {
+                // Hide any user message that looks like the system prompt
+                // Check for key phrases "请分析我的命盘" AND "出生地" AND "经度" to be specific
+                if (msg.isUser && msg.text.includes('请分析我的命盘') && (msg.text.includes('出生地') || msg.text.includes('性别')) && msg.text.includes('经度')) {
+                  return false;
+                }
+                // Keep legacy filter just in case
+                if (msg.isUser && msg.text.includes('分析命盘') && msg.text.length > 20) {
+                  return false;
+                }
+                return true;
+              });
             setMessages(msgs);
             console.log('加载了', msgs.length, '条对话记录');
           } else if (item.chatLog && item.chatLog.length > 0) {
@@ -308,7 +416,7 @@ export const ConsoleScreen = React.memo<ConsoleScreenProps>(({ setFullScreen, ba
         result.month.gan,
         result.month.zhi,
         item.gender || 'male',
-        y
+        dateObj
       );
 
       setChart(result);
@@ -342,7 +450,7 @@ export const ConsoleScreen = React.memo<ConsoleScreenProps>(({ setFullScreen, ba
         result.month.gan,
         result.month.zhi,
         gender,
-        birthDate.year
+        dateObj
       );
       setChart(result);
       setDaYun(dy);
@@ -376,7 +484,7 @@ export const ConsoleScreen = React.memo<ConsoleScreenProps>(({ setFullScreen, ba
       result.month.gan,
       result.month.zhi,
       gender,
-      birthDate.year
+      dateObj
     );
 
     setChart(result);
@@ -658,7 +766,7 @@ export const ConsoleScreen = React.memo<ConsoleScreenProps>(({ setFullScreen, ba
                 onClick={() => {
                   setTempDate(prev => ({ ...prev, [type]: item }));
                 }}
-                className={`h-8 flex items-center justify-center snap-center text-sm font-medium transition-colors cursor-pointer ${(type === 'year' ? tempDate.year === item :
+                className={`h-8 flex items-center justify-center snap-center text-sm font-medium transition-colors ${(type === 'year' ? tempDate.year === item :
                   type === 'month' ? tempDate.month === item :
                     type === 'day' ? tempDate.day === item :
                       type === 'hour' ? tempDate.hour === item :
@@ -773,14 +881,35 @@ export const ConsoleScreen = React.memo<ConsoleScreenProps>(({ setFullScreen, ba
     );
   };
 
+  // Render Logout Confirmation Modal using Portal
+  const renderLogoutConfirmModal = () => {
+    if (!showLogoutConfirm) return null;
+    return createPortal(
+      <div className="fixed inset-0 z-[1001] bg-black/80 flex items-center justify-center p-6 animate-in fade-in" onClick={() => setShowLogoutConfirm(false)}>
+        <div className="bg-[#1C1C1E] rounded-2xl p-6 w-full max-w-xs text-center shadow-2xl animate-in zoom-in-95 border border-white/10" onClick={e => e.stopPropagation()}>
+          <div className="w-12 h-12 bg-red-500/20 rounded-full flex items-center justify-center mx-auto mb-4 text-red-500">
+            <AlertTriangle size={24} />
+          </div>
+          <h3 className="text-lg font-bold mb-2 text-white">确定退出登录吗？</h3>
+          <p className="text-sm text-gray-400 mb-6">退出后需要重新验证手机号登录</p>
+          <div className="flex gap-3">
+            <button onClick={() => setShowLogoutConfirm(false)} className="flex-1 py-3 bg-white/10 hover:bg-white/20 rounded-xl font-bold text-gray-300 transition-colors">取消</button>
+            <button onClick={confirmLogout} className="flex-1 py-3 bg-red-500 hover:bg-red-600 text-white rounded-xl font-bold shadow-lg shadow-red-500/30 transition-colors">退出</button>
+          </div>
+        </div>
+      </div>,
+      document.body
+    );
+  };
+
 
 
   return (
-    <div className="flex flex-col h-full bg-[#F3F4F6] dark:bg-[#050507] relative overflow-y-auto hide-scrollbar transition-colors duration-300">
+    <div className="flex flex-col h-full bg-[#F3F4F6] dark:bg-[#050507] relative overflow-y-auto hide-scrollbar overflow-x-hidden transition-colors duration-300">
       {showDetailModal && chart && (
         <DetailedChartScreen
           chart={chart}
-          birthYear={birthDate.year}
+          birthDate={new Date(birthDate.year, birthDate.month - 1, birthDate.day, birthDate.hour || 0, birthDate.minute || 0)}
           gender={gender}
           onClose={() => setShowDetailModal(false)}
           username={username || '用户'}
@@ -922,37 +1051,123 @@ export const ConsoleScreen = React.memo<ConsoleScreenProps>(({ setFullScreen, ba
 
       <div className="fixed top-20 left-1/2 -translate-x-1/2 w-64 h-64 bg-amber-500/10 blur-[80px] rounded-full pointer-events-none z-0"></div>
 
-      <header className="pt-12 px-5 pb-4 flex items-center z-30 sticky top-0 bg-[#F3F4F6]/90 dark:bg-[#050507]/90 backdrop-blur-md transition-all duration-300">
-        <div className="w-10">
-          {showResult && (
-            <button onClick={handleBack} className="w-8 h-8 rounded-full bg-white dark:bg-white/10 shadow-sm flex items-center justify-center text-gray-600 dark:text-gray-300 active:scale-95 transition-transform">
-              <ChevronLeft size={20} />
-            </button>
+      <header className="pt-12 px-5 pb-4 flex items-center z-30 sticky top-0 bg-[#F3F4F6]/90 dark:bg-[#050507]/90 backdrop-blur-md transition-all duration-300 min-h-[88px]">
+        {/* Left: Back Button */}
+        <div className="w-20 flex items-center">
+          {showResult && !isSearchOpen && (
+            <motion.button
+              initial={{ opacity: 0, x: -10 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -10 }}
+              transition={{ ease: [0.32, 0.72, 0, 1], duration: 0.4 }}
+              onClick={handleBack}
+              className="w-10 h-10 rounded-full bg-white dark:bg-white/10 shadow-sm flex items-center justify-center text-gray-600 dark:text-gray-300 active:scale-90 transition-transform"
+            >
+              <ChevronLeft size={22} />
+            </motion.button>
           )}
         </div>
-        <div className="flex-1 text-center pr-10">
-          <h1 className="text-lg font-bold tracking-widest text-gray-900 dark:text-white">微量玄妙</h1>
-          <p className="text-[10px] text-gray-500 dark:text-gray-400 tracking-wider">智能排盘控制台</p>
+
+        {/* Center: Title OR Search Bar */}
+        <div className="absolute left-1/2 -translate-x-1/2 flex justify-center w-full max-w-[60%] pointer-events-none z-40">
+          <div className="pointer-events-auto w-full flex justify-center">
+            <AnimatePresence mode="wait">
+              {isSearchOpen ? (
+                <motion.div
+                  key="search"
+                  initial={{ width: 40, opacity: 0, x: 100 }}
+                  animate={{ width: '100%', opacity: 1, x: 0 }}
+                  exit={{ width: 40, opacity: 0, x: 100 }}
+                  transition={{ ease: [0.32, 0.72, 0, 1], duration: 0.5 }}
+                  className="flex items-center justify-center w-full"
+                >
+                  <div className="relative w-full max-w-[500px] flex items-center">
+                    <input
+                      ref={searchInputRef}
+                      type="text"
+                      value={searchTerm}
+                      onChange={(e) => {
+                        const newTerm = e.target.value;
+                        setSearchTerm(newTerm);
+                      }}
+                      placeholder="搜索对话内容"
+                      className="w-full bg-white dark:bg-white/10 px-4 py-2.5 pl-10 pr-10 rounded-full text-sm border border-gray-200 dark:border-white/10 focus:ring-2 focus:ring-amber-500/50 outline-none transition-all shadow-lg"
+                      autoFocus
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          traverseSearch('next');
+                        }
+                      }}
+                    />
+                    <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
+
+                    <button
+                      onClick={() => { setIsSearchOpen(false); setSearchTerm(''); }}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-gray-200 dark:bg-white/20 flex items-center justify-center text-gray-500 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-white/30 transition-colors"
+                    >
+                      <X size={12} />
+                    </button>
+                  </div>
+                </motion.div>
+              ) : (
+                <motion.div
+                  key="title"
+                  initial={{ opacity: 0, scale: 0.9 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.9 }}
+                  transition={{ ease: [0.32, 0.72, 0, 1], duration: 0.4 }}
+                  className="text-center"
+                >
+                  <h1 className="text-lg font-bold tracking-widest text-gray-900 dark:text-white">微量玄妙</h1>
+                  <p className="text-[10px] text-gray-500 dark:text-gray-400 tracking-wider font-medium">智能排盘控制台</p>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
         </div>
-        {/* 新对话按钮移动到 Header */}
+
+        {/* Right: Actions */}
+        <div className="w-auto ml-auto flex justify-end items-center gap-2 min-w-[80px]">
+          {!isSearchOpen && hasBenchmarkStarted && (
+            <motion.div
+              initial={{ opacity: 0, x: 10 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 10 }}
+              transition={{ ease: [0.32, 0.72, 0, 1], duration: 0.4 }}
+              className="flex items-center gap-2"
+            >
+              <button
+                onClick={() => {
+                  if (confirm('确定要开启新对话吗？当前对话将保存到历史记录。')) {
+                    setShowResult(false);
+                    setMessages([]);
+                    setCurrentHistoryId(null);
+                    setHasBenchmarkStarted(false);
+                    setHasInitialized(false);
+                    setTimeout(() => {
+                      setHasInitialized(true);
+                      setShowResult(true);
+                    }, 100);
+                  }
+                }}
+                className="h-9 px-3 rounded-full bg-white dark:bg-white/10 shadow-sm flex items-center justify-center text-xs font-bold text-gray-600 dark:text-gray-300 active:scale-95 transition-transform hover:text-amber-500"
+              >
+                <span>新对话</span>
+              </button>
+
+              <button
+                onClick={() => setIsSearchOpen(true)}
+                className="w-9 h-9 rounded-full bg-white dark:bg-white/10 shadow-sm flex items-center justify-center text-gray-600 dark:text-gray-300 active:scale-90 transition-transform hover:text-amber-500"
+              >
+                <Search size={18} />
+              </button>
+            </motion.div>
+          )}
+        </div>
       </header>
 
-      {/* 新对话按钮 - 固定定位，不随页面滚动 */}
-      {hasBenchmarkStarted && (
-        <button
-          onClick={() => {
-            setMessages([]);
-            setCurrentHistoryId(null);
-            setHasBenchmarkStarted(false);
-            setHasInitialized(false);
-          }}
-          className="fixed top-5 right-5 z-[60] bg-gray-100/90 dark:bg-white/10 px-3 py-1.5 rounded-full text-xs font-bold text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-white/20 transition-colors shadow-sm backdrop-blur-md"
-        >
-          新对话
-        </button>
-      )}
-
-      <main className="px-4 pb-32 relative z-10 min-h-[80vh]">
+      <main className="px-4 pb-32 relative z-10 min-h-[80vh] overflow-x-hidden">
         <div className={`transition-all duration-500 ease-in-out ${showResult || analyzing ? 'opacity-0 translate-y-10 pointer-events-none absolute' : 'opacity-100 translate-y-0'}`}>
           <div className="bg-white dark:bg-[#1C1C1E] rounded-2xl p-5 shadow-lg shadow-gray-200/50 dark:shadow-none border border-gray-100 dark:border-white/5 relative overflow-hidden transition-colors duration-300">
             {/* Input Form... same as before */}
@@ -1004,211 +1219,349 @@ export const ConsoleScreen = React.memo<ConsoleScreenProps>(({ setFullScreen, ba
           </div>
         </div>
 
-        {analyzing && (
-          <div className="absolute inset-0 z-20 flex flex-col items-center justify-center space-y-4 bg-[#F3F4F6] dark:bg-[#050507]">
-            <div className="relative">
-              <div className="w-16 h-16 border-4 border-gray-200 dark:border-white/10 border-t-primary rounded-full animate-spin"></div>
-              <div className="absolute inset-0 flex items-center justify-center"><Zap size={20} className="text-primary animate-pulse" /></div>
-            </div>
-            <p className="text-xs text-gray-500 tracking-widest animate-pulse">
-              测试报告生成需要约3分钟，请勿离开此页面...
-            </p>
-          </div>
-        )}
-
-        {showResult && chart && (
-          <div className="animate-in fade-in slide-in-from-bottom-8 duration-700 w-full">
-            {/* 顶部: 详细命盘条 (可点击查看详情) */}
-            {/* 顶部: 详细命盘条 (去除高亮样式) */}
-            {/* 顶部: 详细命盘条 (去除高亮样式 - 透明背景，无阴影，无边框) */}
-            <div onClick={() => setShowDetailModal(true)} className="relative z-20 bg-white/80 dark:bg-[#050507]/80 backdrop-blur-md rounded-2xl mb-6 overflow-hidden cursor-pointer active:scale-[0.99] transition-transform border border-gray-100 dark:border-white/5">
-              <div className="grid grid-cols-4 divide-x divide-transparent border-b border-transparent">
-                {[
-                  { title: '年柱', gan: chart.year.gan, zhi: chart.year.zhi, ganShen: chart.year.ganShen, zhiShen: chart.year.zhiShen },
-                  { title: '月柱', gan: chart.month.gan, zhi: chart.month.zhi, ganShen: chart.month.ganShen, zhiShen: chart.month.zhiShen },
-                  { title: '日柱', gan: chart.day.gan, zhi: chart.day.zhi, ganShen: gender === 'male' ? '元男' : '元女', zhiShen: chart.day.zhiShen },
-                  { title: '时柱', gan: chart.hour.gan, zhi: chart.hour.zhi, ganShen: chart.hour.ganShen, zhiShen: chart.hour.zhiShen }
-                ].map((col, i) => (
-                  <div key={i} className="flex flex-col items-center py-3 relative group">
-                    <span className="text-[10px] text-gray-400 mb-1">{col.title}</span>
-                    <span className="text-[10px] font-medium text-primary mb-1 scale-90">{col.ganShen}</span>
-                    <span className="text-xl font-serif font-bold leading-none mb-1"><ElementText char={col.gan} /></span>
-                    <span className="text-xl font-serif font-bold leading-none mb-1"><ElementText char={col.zhi} /></span>
-                    <span className="text-[10px] font-medium text-primary scale-90">{col.zhiShen}</span>
-                    <div className="absolute inset-x-0 bottom-0 h-0.5 bg-primary/0 group-hover:bg-primary/50 transition-colors"></div>
-                  </div>
-                ))}
+        {
+          analyzing && (
+            <div className="absolute inset-0 z-20 flex flex-col items-center justify-center space-y-4 bg-[#F3F4F6] dark:bg-[#050507]">
+              <div className="relative">
+                <div className="w-16 h-16 border-4 border-gray-200 dark:border-white/10 border-t-primary rounded-full animate-spin"></div>
+                <div className="absolute inset-0 flex items-center justify-center"><Zap size={20} className="text-primary animate-pulse" /></div>
               </div>
-              <div className="py-2 bg-transparent">
-                <div className="flex overflow-x-auto px-4 space-x-4 hide-scrollbar justify-center">
-                  <div className="flex-shrink-0 flex flex-col justify-center items-center pr-2 border-r border-gray-200/50 dark:border-white/5">
-                    <span className="text-[10px] text-gray-400 writing-mode-vertical">大运</span>
-                  </div>
-                  {daYun.map((cycle, idx) => (
-                    <div key={idx} className="flex flex-col items-center space-y-1 min-w-[40px] opacity-80">
-                      <span className="text-[10px] font-serif font-bold text-gray-900 dark:text-gray-200">{cycle.gan}{cycle.zhi}</span>
-                      <span className="text-[9px] text-gray-500">{cycle.age}岁</span>
+              <p className="text-xs text-gray-500 tracking-widest animate-pulse">
+                测试报告生成需要约3分钟，请勿离开此页面...
+              </p>
+            </div>
+          )
+        }
+
+        {
+          showResult && chart && (
+            <div className="animate-in fade-in slide-in-from-bottom-8 duration-700 w-full">
+              {/* 顶部: 详细命盘条 (可点击查看详情) */}
+              {/* 顶部: 详细命盘条 (去除高亮样式) */}
+              {/* 顶部: 详细命盘条 (去除高亮样式 - 透明背景，无阴影，无边框) */}
+              <div onClick={() => setShowDetailModal(true)} className="relative z-20 bg-white/80 dark:bg-[#050507]/80 backdrop-blur-md rounded-2xl mb-6 overflow-hidden cursor-pointer active:scale-[0.99] transition-transform border border-gray-100 dark:border-white/5">
+                <div className="grid grid-cols-4 divide-x divide-transparent border-b border-transparent">
+                  {[
+                    { title: '年柱', gan: chart.year.gan, zhi: chart.year.zhi, ganShen: chart.year.ganShen, zhiShen: chart.year.zhiShen },
+                    { title: '月柱', gan: chart.month.gan, zhi: chart.month.zhi, ganShen: chart.month.ganShen, zhiShen: chart.month.zhiShen },
+                    { title: '日柱', gan: chart.day.gan, zhi: chart.day.zhi, ganShen: gender === 'male' ? '元男' : '元女', zhiShen: chart.day.zhiShen },
+                    { title: '时柱', gan: chart.hour.gan, zhi: chart.hour.zhi, ganShen: chart.hour.ganShen, zhiShen: chart.hour.zhiShen }
+                  ].map((col, i) => (
+                    <div key={i} className="flex flex-col items-center py-3 relative group">
+                      <span className="text-[10px] text-gray-400 mb-1">{col.title}</span>
+                      <span className="text-[10px] font-medium text-primary mb-1 scale-90">{col.ganShen}</span>
+                      <span className="text-xl font-serif font-bold leading-none mb-1"><ElementText char={col.gan} /></span>
+                      <span className="text-xl font-serif font-bold leading-none mb-1"><ElementText char={col.zhi} /></span>
+                      <span className="text-[10px] font-medium text-primary scale-90">{col.zhiShen}</span>
+                      <div className="absolute inset-x-0 bottom-0 h-0.5 bg-primary/0 group-hover:bg-primary/50 transition-colors"></div>
                     </div>
                   ))}
                 </div>
-              </div>
-            </div>
-
-            {/* 聊天对话框区域 */}
-            <div className="bg-white/50 dark:bg-[#1C1C1E]/50 rounded-2xl p-5 border border-dashed border-gray-300 dark:border-white/10 min-h-[400px] flex flex-col relative transition-all">
-
-              {/* Header: Balance & New Chat */}
-              {/* Header: Balance Badge Only */}
-              <div className="absolute top-4 left-4 pointer-events-none z-10">
-                <div className="flex items-center gap-1 bg-gray-100/90 dark:bg-white/10 px-2 py-1 rounded-lg backdrop-blur-sm pointer-events-auto">
-                  <Zap size={12} className="text-amber-500" />
-                  <span className="text-xs font-bold text-gray-700 dark:text-gray-200">{balance}</span>
-                </div>
-              </div>
-
-              {/* AI Avatar & Status */}
-              <div className="flex items-center justify-center gap-2 mb-4 mt-8">
-                <div className={`w-8 h-8 rounded-full bg-gradient-to-b from-[#E8D9C5] to-[#CABA9C] ring-2 ring-white/90 ring-inset shadow-[inset_0_0_8px_rgba(255,255,255,0.5)] flex items-center justify-center transition-all ${analyzing ? 'animate-pulse ring-4 ring-[#CABA9C]/30 scale-110' : ''}`}>
-                  <QuantumIcon />
-                </div>
-                <span className="text-sm font-bold text-gray-900 dark:text-white">FateDiffusion AI</span>
-              </div>
-
-              {/* 1. 未开始基准测试: 显示按钮 */}
-              {!hasBenchmarkStarted && (
-                <div className="flex-1 flex flex-col items-center justify-center pb-20 animate-in fade-in zoom-in duration-500">
-                  <button
-                    onClick={runBenchmark}
-                    className="bg-gradient-to-b from-[#E8D9C5] to-[#CABA9C] ring-2 ring-white/90 ring-inset text-white rounded-full px-8 py-4 font-bold shadow-[0_15px_35px_-5px_rgba(202,186,156,0.6),inset_0_0_15px_rgba(255,255,255,0.6),inset_0_1px_2px_rgba(255,255,255,0.9)] hover:scale-105 active:scale-95 transition-all flex items-center gap-2 group backdrop-blur-sm"
-                  >
-                    <Zap size={20} fill="currentColor" className="group-hover:animate-pulse" />
-                    <span>开始基准测试</span>
-                    <span className="bg-white/20 px-2 py-0.5 rounded text-xs ml-1">-50算力</span>
-                  </button>
-                  <p className="text-[10px] text-gray-400 mt-4 text-center leading-relaxed font-mono whitespace-nowrap">
-                    构建多维时空全息模型 &nbsp; 演算大概率世界线收束
-                  </p>
-                </div>
-              )}
-
-              {/* 2. 已开始基准测试: 显示消息列表 */}
-              {hasBenchmarkStarted && (
-                <div className="flex-1 space-y-4 mb-4 pb-24 overflow-y-auto no-scrollbar scroll-smooth">
-                  {messages.length === 0 && !isSending ? (
-                    <div className="flex flex-col items-center justify-center h-full text-gray-400 space-y-3 opacity-60">
-                      <p className="text-[10px] tracking-widest uppercase animate-pulse">AI is ready...</p>
+                <div className="py-2 bg-transparent">
+                  <div className="flex overflow-x-auto px-4 space-x-4 hide-scrollbar justify-center">
+                    <div className="flex-shrink-0 flex flex-col justify-center items-center pr-2 border-r border-gray-200/50 dark:border-white/5">
+                      <span className="text-[10px] text-gray-400 writing-mode-vertical">大运</span>
                     </div>
-                  ) : (
-                    <>
-                      {messages.map(msg => (
-                        <div key={msg.id} className={`flex ${msg.isUser ? 'justify-end' : 'justify-start'} animate-in slide-in-from-bottom-2 duration-300`}>
-                          {/* AI Avatar Removed for cleaner text view */}
-                          <div className={`w-full rounded-2xl px-4 py-3 text-sm leading-relaxed shadow-sm ${msg.isUser ? 'bg-primary text-white rounded-br-none max-w-[85%] ml-auto' : 'bg-transparent text-gray-800 dark:text-gray-200 rounded-bl-none border-none p-0 markdown-body'}`}>
-                            {msg.isUser ? msg.text : (
-                              <ReactMarkdown
-                                remarkPlugins={[remarkGfm]}
-                                components={{
-                                  p: ({ node, ...props }) => <p className="mb-2 last:mb-0" {...props} />,
-                                  strong: ({ node, ...props }) => <span className="font-bold text-primary" {...props} />,
-                                  ul: ({ node, ...props }) => <ul className="list-disc ml-4 mb-2" {...props} />,
-                                  li: ({ node, ...props }) => <li className="mb-1" {...props} />,
-                                  h1: ({ node, ...props }) => <h1 className="text-xl font-bold mb-2 mt-4" {...props} />,
-                                  h2: ({ node, ...props }) => <h2 className="text-lg font-bold mb-2 mt-3" {...props} />,
-                                  h3: ({ node, ...props }) => <h3 className="text-base font-bold mb-1 mt-2" {...props} />,
-                                  blockquote: ({ node, ...props }) => <blockquote className="border-l-4 border-primary/30 pl-3 italic text-gray-500 my-2" {...props} />,
-                                  table: ({ node, ...props }) => (
-                                    <div className="overflow-x-auto my-3 -mx-2">
-                                      <table className="w-full text-xs rounded-xl overflow-hidden border border-gray-200 dark:border-white/10" {...props} />
-                                    </div>
-                                  ),
-                                  thead: ({ node, ...props }) => <thead className="bg-gradient-to-r from-amber-500/10 to-gray-500/10 dark:from-amber-500/20 dark:to-gray-500/20" {...props} />,
-                                  th: ({ node, ...props }) => (
-                                    <th className="px-2 py-2.5 text-[10px] font-bold text-primary uppercase tracking-wider text-center whitespace-nowrap" {...props} />
-                                  ),
-                                  tr: ({ node, ...props }) => <tr className="even:bg-gray-50/50 dark:even:bg-white/5 hover:bg-blue-50/50 dark:hover:bg-white/10 transition-colors" {...props} />,
-                                  td: ({ node, children, ...props }) => {
-                                    // 检测是否是五行元素单元格并应用颜色
-                                    const text = String(children);
-                                    let colorClass = '';
-                                    if (text.includes('金') || text.includes('Metal')) colorClass = 'text-amber-500 font-bold';
-                                    else if (text.includes('木') || text.includes('Wood')) colorClass = 'text-green-500 font-bold';
-                                    else if (text.includes('水') || text.includes('Water')) colorClass = 'text-blue-500 font-bold';
-                                    else if (text.includes('火') || text.includes('Fire')) colorClass = 'text-red-500 font-bold';
-                                    else if (text.includes('土') || text.includes('Earth')) colorClass = 'text-yellow-600 font-bold';
-                                    return (
-                                      <td className={`px-2 py-2 text-center border-t border-gray-100 dark:border-white/5 ${colorClass}`} {...props}>
-                                        {children}
-                                      </td>
-                                    );
-                                  },
-                                }}
-                              >
-                                {msg.text}
-                              </ReactMarkdown>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-
-                      {/* 思考状态 (当 isSending 为 true 时显示) */}
-                      {isSending && (
-                        <div className="flex justify-start animate-in fade-in duration-300">
-                          <div className="w-8 h-8 rounded-full bg-gradient-to-b from-[#E8D9C5] to-[#CABA9C] ring-2 ring-white/90 ring-inset shadow-[inset_0_0_8px_rgba(255,255,255,0.5)] flex items-center justify-center mr-2 mt-1 flex-shrink-0 animate-pulse ring-4 ring-[#CABA9C]/20 backdrop-blur-sm">
-                            <QuantumIcon />
-                          </div>
-                          <div className="bg-white dark:bg-[#2C2C2E] rounded-2xl rounded-bl-none px-4 py-3 border border-gray-100 dark:border-white/5 flex items-center space-x-2">
-                            <div className="w-2 h-2 bg-primary rounded-full animate-bounce [animation-delay:-0.3s]"></div>
-                            <div className="w-2 h-2 bg-primary rounded-full animate-bounce [animation-delay:-0.15s]"></div>
-                            <div className="w-2 h-2 bg-primary rounded-full animate-bounce"></div>
-                            <span className="text-xs text-gray-400 ml-2">正在思考...</span>
-                          </div>
-                        </div>
-                      )}
-                    </>
-                  )}
-                  <div ref={chatEndRef}></div>
+                    {daYun.map((cycle, idx) => (
+                      <div key={idx} className="flex flex-col items-center space-y-1 min-w-[40px] opacity-80">
+                        <span className="text-[10px] font-serif font-bold text-gray-900 dark:text-gray-200">{cycle.gan}{cycle.zhi}</span>
+                        <span className="text-[9px] text-gray-500">{cycle.age}岁</span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              )}
+              </div>
+
+              {/* 聊天对话框区域 */}
+              {/* Chat Area Container */}
+              <div className="bg-white/50 dark:bg-[#1C1C1E]/50 rounded-2xl p-5 border border-dashed border-gray-300 dark:border-white/10 min-h-[400px] flex flex-col relative transition-all">
+                {/* Balance Badge */}
+                <div className="absolute top-4 left-4 pointer-events-none z-10">
+                  <div className="flex items-center gap-1 bg-gray-100/90 dark:bg-white/10 px-2 py-1 rounded-lg backdrop-blur-sm pointer-events-auto">
+                    <Zap size={12} className="text-amber-500" />
+                    <span className="text-xs font-bold text-gray-700 dark:text-gray-200">{balance}</span>
+                  </div>
+                </div>
+
+                {/* AI Avatar */}
+                <div className="flex items-center justify-center gap-2 mb-4 mt-8">
+                  <div className={`w-8 h-8 rounded-full bg-gradient-to-b from-[#E8D9C5] to-[#CABA9C] ring-2 ring-white/90 ring-inset shadow-[inset_0_0_8px_rgba(255,255,255,0.5)] flex items-center justify-center transition-all ${analyzing ? 'animate-pulse ring-4 ring-[#CABA9C]/30 scale-110' : ''}`}>
+                    <QuantumIcon />
+                  </div>
+                  <span className="text-sm font-bold text-gray-900 dark:text-white">FateDiffusion AI</span>
+                </div>
+
+                {!hasBenchmarkStarted ? (
+                  <div className="flex-1 flex flex-col items-center justify-center pb-20 animate-in fade-in zoom-in duration-500">
+                    <button
+                      onClick={runBenchmark}
+                      className="bg-gradient-to-b from-[#E8D9C5] to-[#CABA9C] ring-2 ring-white/90 ring-inset text-white rounded-full px-8 py-4 font-bold shadow-[0_15px_35px_-5px_rgba(202,186,156,0.6),inset_0_0_15px_rgba(255,255,255,0.6),inset_0_1px_2px_rgba(255,255,255,0.9)] hover:scale-105 active:scale-95 transition-all flex items-center gap-2 group backdrop-blur-sm"
+                    >
+                      <Zap size={20} fill="currentColor" className="group-hover:animate-pulse" />
+                      <span>开始基准测试</span>
+                      <span className="bg-white/20 px-2 py-0.5 rounded text-xs ml-1">-50算力</span>
+                    </button>
+                    <p className="text-[10px] text-gray-400 mt-4 text-center leading-relaxed font-mono whitespace-nowrap">
+                      构建多维时空全息模型 &nbsp; 演算大概率世界线收束
+                    </p>
+                    <p className="text-[10px] text-gray-400/60 mt-2 text-center">
+                      可在个人主页中查看历史记录
+                    </p>
+                  </div>
+                ) : (
+                  <div className="flex-1 space-y-4 mb-4 pb-24 overflow-y-auto no-scrollbar scroll-smooth">
+                    {messages.length === 0 && !isSending ? (
+                      <div className="flex flex-col items-center justify-center h-full text-gray-400 space-y-3 opacity-60">
+                        <p className="text-[10px] tracking-widest uppercase animate-pulse">AI is ready...</p>
+                      </div>
+                    ) : (
+                      <>
+                        {messages.map(msg => {
+                          const isMatch = searchMatches.some(m => m.id === msg.id.toString());
+                          const currentMatch = searchMatches[currentMatchIndex];
+                          const isCurrent = currentMatch && currentMatch.id === msg.id.toString();
+
+                          // Custom Renderer for Highlighting
+                          const HighlightRenderer = ({ children }: { children: React.ReactNode }) => {
+                            if (!searchTerm.trim()) return <>{children}</>;
+
+                            return (
+                              <>
+                                {React.Children.map(children, (child) => {
+                                  if (typeof child === 'string') {
+                                    try {
+                                      const escapedTerm = searchTerm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                                      const parts = child.split(new RegExp(`(${escapedTerm})`, 'gi'));
+                                      return parts.map((part, i) => {
+                                        if (part.toLowerCase() === searchTerm.toLowerCase()) {
+                                          return <span key={i} className="highlight-match bg-orange-400 text-white px-0.5 rounded shadow-sm font-bold">{part}</span>;
+                                        }
+                                        return part;
+                                      });
+                                    } catch (e) {
+                                      return child;
+                                    }
+                                  }
+                                  return child;
+                                })}
+                              </>
+                            );
+                          };
+
+                          return (
+                            <div key={msg.id} id={`msg-${msg.id}`} className={`relative flex ${msg.isUser ? 'justify-end' : 'justify-start'} animate-in slide-in-from-bottom-2 duration-300 scroll-mt-32 group`}>
+                              {/* AI Avatar Removed for cleaner text view */}
+                              <div
+                                className={`w-full rounded-2xl px-4 py-3 text-sm leading-relaxed shadow-sm transition-all duration-300 ${isCurrent ? 'ring-2 ring-amber-500 shadow-[0_0_15px_rgba(245,158,11,0.4)] scale-[1.01]' :
+                                  isMatch ? 'ring-1 ring-amber-300/50 bg-amber-50/50 dark:bg-amber-900/10' : ''
+                                  } ${msg.isUser ? 'bg-primary text-white rounded-br-none max-w-[85%] ml-auto select-text' : 'bg-transparent text-gray-800 dark:text-gray-200 rounded-bl-none border-none p-0 markdown-body select-text cursor-pointer active:bg-gray-100 dark:active:bg-white/5'}`}
+                              // interactions removed for native copy
+                              >
+                                {msg.isUser ? msg.text : (
+                                  <ReactMarkdown
+                                    remarkPlugins={[remarkGfm]}
+                                    components={{
+                                      p: ({ node, ...props }) => <p className="mb-2 last:mb-0" {...props}><HighlightRenderer>{props.children}</HighlightRenderer></p>,
+                                      strong: ({ node, ...props }) => <span className="font-bold text-primary" {...props}><HighlightRenderer>{props.children}</HighlightRenderer></span>,
+                                      // Ensure other elements also use HighlightRenderer if text content matches
+                                      li: ({ node, ...props }) => <li className="mb-1" {...props}><HighlightRenderer>{props.children}</HighlightRenderer></li>,
+                                      h1: ({ node, ...props }) => <h1 className="text-xl font-bold mb-2 mt-4" {...props}><HighlightRenderer>{props.children}</HighlightRenderer></h1>,
+                                      h2: ({ node, ...props }) => <h2 className="text-lg font-bold mb-2 mt-3" {...props}><HighlightRenderer>{props.children}</HighlightRenderer></h2>,
+                                      h3: ({ node, ...props }) => <h3 className="text-base font-bold mb-1 mt-2" {...props}><HighlightRenderer>{props.children}</HighlightRenderer></h3>,
+                                      blockquote: ({ node, ...props }) => <blockquote className="border-l-4 border-primary/30 pl-3 italic text-gray-500 my-2" {...props}><HighlightRenderer>{props.children}</HighlightRenderer></blockquote>,
+                                      table: ({ node, ...props }) => (
+                                        <div className="overflow-x-auto my-3 -mx-2">
+                                          <table className="w-full text-xs rounded-xl overflow-hidden border border-gray-200 dark:border-white/10" {...props} />
+                                        </div>
+                                      ),
+                                      thead: ({ node, ...props }) => <thead className="bg-gradient-to-r from-amber-500/10 to-gray-500/10 dark:from-amber-500/20 dark:to-gray-500/20" {...props} />,
+                                      th: ({ node, ...props }) => (
+                                        <th className="px-2 py-2.5 text-[10px] font-bold text-primary uppercase tracking-wider text-center whitespace-nowrap" {...props} />
+                                      ),
+                                      tr: ({ node, ...props }) => <tr className="even:bg-gray-50/50 dark:even:bg-white/5 hover:bg-blue-50/50 dark:hover:bg-white/10 transition-colors" {...props} />,
+                                      td: ({ node, children, ...props }) => {
+                                        // 检测是否是五行元素单元格并应用颜色
+                                        const text = String(children);
+                                        let colorClass = '';
+                                        if (text.includes('金') || text.includes('Metal')) colorClass = 'text-amber-500 font-bold';
+                                        return (
+                                          <td className={`px-2 py-2 text-center border-t border-gray-100 dark:border-white/5 ${colorClass}`} {...props}>
+                                            <HighlightRenderer>{children}</HighlightRenderer>
+                                          </td>
+                                        );
+                                      },
+                                    }}
+                                  >
+                                    {msg.text}
+                                  </ReactMarkdown>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+
+                        {/* 思考状态 (当 isSending 为 true 时显示) */}
+                        {isSending && (
+                          <div className="flex justify-start animate-in fade-in duration-300">
+                            <div className="w-8 h-8 rounded-full bg-gradient-to-b from-[#E8D9C5] to-[#CABA9C] ring-2 ring-white/90 ring-inset shadow-[inset_0_0_8px_rgba(255,255,255,0.5)] flex items-center justify-center mr-2 mt-1 flex-shrink-0 animate-pulse ring-4 ring-[#CABA9C]/20 backdrop-blur-sm">
+                              <QuantumIcon />
+                            </div>
+                            <div className="bg-white dark:bg-[#2C2C2E] rounded-2xl rounded-bl-none px-4 py-3 border border-gray-100 dark:border-white/5 flex items-center space-x-2">
+                              <div className="w-2 h-2 bg-primary rounded-full animate-bounce [animation-delay:-0.3s]"></div>
+                              <div className="w-2 h-2 bg-primary rounded-full animate-bounce [animation-delay:-0.15s]"></div>
+                              <div className="w-2 h-2 bg-primary rounded-full animate-bounce"></div>
+                              <span className="text-xs text-gray-400 ml-2">正在思考...</span>
+                            </div>
+                          </div>
+                        )}
+                      </>
+                    )}
+                    <div ref={chatEndRef}></div>
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
-        )}
-      </main>
+          )
+        }
+      </main >
 
       {/* Sticky Bottom Input - Moved Outside Main */}
-      {showResult && hasBenchmarkStarted && (
-        <div className="fixed bottom-0 left-0 right-0 bg-white/80 dark:bg-[#050507]/80 backdrop-blur-xl p-4 z-50 border-t border-gray-100 dark:border-white/5 flex justify-center pb-8 sm:pb-4">
-          <div className="w-full max-w-4xl relative">
-            <input
-              type="text"
-              value={inputText}
-              onChange={(e) => setInputText(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && !isSending && hasBenchmarkStarted && handleSendMessage()}
-              placeholder="了解更多您的底层代码..."
-              disabled={!hasBenchmarkStarted || isSending}
-              className="w-full bg-gray-100 dark:bg-[#1C1C1E] border-0 rounded-2xl pl-5 pr-12 py-4 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:ring-2 focus:ring-primary/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
-            />
-            <button
-              onClick={handleSendMessage}
-              disabled={!inputText.trim() || isSending || !hasBenchmarkStarted}
-              className="absolute right-2 top-1/2 -translate-y-1/2 w-10 h-10 rounded-xl bg-white dark:bg-white/10 shadow-sm flex items-center justify-center text-primary disabled:opacity-50 disabled:text-gray-400 hover:bg-gray-50 dark:hover:bg-white/20 active:scale-95 transition-all"
-            >
-              <ArrowUp size={20} />
-            </button>
+      {/* Sticky Bottom Input - Moved Outside Main */}
+      {
+        showResult && hasBenchmarkStarted && (
+          <div className="fixed bottom-0 left-0 right-0 bg-white/80 dark:bg-[#050507]/80 backdrop-blur-xl p-4 z-50 border-t border-gray-100 dark:border-white/5 flex justify-center pb-8 sm:pb-4">
+            <div className="w-full max-w-4xl relative">
+              <textarea
+                ref={textareaRef}
+                value={inputText}
+                onChange={(e) => {
+                  setInputText(e.target.value);
+                  // Auto-resize
+                  e.target.style.height = 'auto';
+                  e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px'; // Max height ~5 rows
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    if (!isSending && hasBenchmarkStarted) handleSendMessage();
+                  }
+                }}
+                placeholder="了解更多您的底层代码..."
+                disabled={!hasBenchmarkStarted || isSending}
+                className="w-full bg-gray-100 dark:bg-[#1C1C1E] border-0 rounded-2xl pl-5 pr-12 py-4 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:ring-2 focus:ring-primary/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg resize-none overflow-y-auto min-h-[56px]"
+                rows={1}
+                style={{ maxHeight: '120px' }}
+              />
+              <button
+                onClick={() => handleSendMessage()}
+                disabled={!inputText.trim() || isSending || !hasBenchmarkStarted}
+                className="absolute right-3 bottom-0 top-0 my-auto w-10 h-10 rounded-xl bg-transparent flex items-center justify-center text-blue-600 disabled:opacity-50 disabled:text-gray-400 hover:bg-blue-50/50 dark:hover:bg-white/5 active:scale-95 transition-all"
+              >
+                {isSending ? <Loader2 size={24} className="animate-spin" /> : <ArrowUp size={24} strokeWidth={2.5} />}
+              </button>
+            </div>
           </div>
-        </div>
-      )}
-      {renderDatePicker()}
-      {renderLocationPicker()}
+        )
+      }
+      {renderLogoutConfirmModal()}
+
+      {/* Context Menu Removed */}
 
       {/* Toast Notification */}
-      {toastMessage && (
-        <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-[1000] pointer-events-none px-6 py-3 bg-black/80 backdrop-blur-md text-white text-sm font-medium rounded-2xl shadow-2xl animate-in fade-in zoom-in duration-300">
-          <div className="flex items-center space-x-2">
-            <div className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-pulse"></div>
-            <span>{toastMessage}</span>
+      {
+        toastMessage && (
+          <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-[1000] pointer-events-none px-6 py-3 bg-black/80 backdrop-blur-md text-white text-sm font-medium rounded-2xl shadow-2xl animate-in fade-in zoom-in duration-300">
+            <div className="flex items-center space-x-2">
+              <div className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-pulse"></div>
+              <span>{toastMessage}</span>
+            </div>
           </div>
-        </div>
-      )}
-    </div>
+        )
+      }
+      {/* AnimatePresence for Profile Modal - iOS Curve */}
+      <AnimatePresence>
+        {isProfileOpen && (
+          <motion.div
+            initial={{ opacity: 0, x: '100%' }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: '100%' }}
+            transition={{ ease: [0.32, 0.72, 0, 1], duration: 0.4 }}
+            className="fixed inset-0 z-[60] bg-[#F3F4F6] dark:bg-[#050507]"
+          >
+            <ProfileScreen
+              user={{
+                id: 'current-user',
+                isLoggedIn: true,
+                phone: '13800000000',
+                uid: '888888',
+                username: username || '用户',
+                avatar: avatar || null,
+                balance: balance,
+                history: [], // Dummy, loaded internally by ProfileScreen
+                hasAgreedPrivacy: true,
+                chats: [],
+                theme: typeof document !== 'undefined' && document.documentElement.classList.contains('dark') ? 'dark' : 'light',
+              }}
+              onBack={() => setIsProfileOpen(false)}
+              onUpdateProfile={(n, a) => {
+                if (n) setName(n);
+              }}
+              onToggleTheme={() => {
+                const isDark = document.documentElement.classList.toggle('dark');
+                // You might want to persist this setting
+              }}
+              onLogout={() => {
+                setIsProfileOpen(false);
+                setShowLogoutConfirm(true);
+              }}
+              onRecharge={() => setShowRechargeModal(true)}
+              onLoadHistory={async (item) => {
+                setIsProfileOpen(false);
+                setCurrentHistoryId(item.id);
+                setMessages([]);
+                if (item.birthYear) {
+                  setBirthDate({
+                    year: item.birthYear,
+                    month: item.birthMonth || 1,
+                    day: item.birthDay || 1,
+                    hour: item.birthHour || 0,
+                    minute: 0
+                  });
+                }
+                if (item.gender) setGender(item.gender);
+                if (item.name) setName(item.name);
+
+                try {
+                  const { getChatMessages } = await import('../utils/api');
+                  const res = await getChatMessages(item.id);
+                  if (res && res.messages) {
+                    const messages = res.messages.map((msg: any) => ({
+                      id: msg.id,
+                      text: msg.text,
+                      isUser: msg.is_user || msg.isUser,
+                      timestamp: msg.timestamp || Date.now()
+                    }));
+
+                    // Filter out the initial system command prompt
+                    const filteredMessages = messages.filter((msg: any) => {
+                      // Hide any user message that looks like the system prompt
+                      // Check for key phrases "请分析我的命盘" AND "出生地" AND "经度" to be specific
+                      if (msg.isUser && msg.text.includes('请分析我的命盘') && (msg.text.includes('出生地') || msg.text.includes('性别')) && msg.text.includes('经度')) {
+                        return false;
+                      }
+                      return true;
+                    });
+
+                    setMessages(filteredMessages);
+                  }
+                } catch (e) { console.error('Failed to load history chat', e); }
+              }}
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div >
   );
+
+
 }); // End of React.memo

@@ -20,6 +20,12 @@ class BaZiData(BaseModel):
     hourShen: str
 
 
+
+class UpdateHistoryTitleRequest(BaseModel):
+    """更新历史记录标题请求"""
+    title: str = Field(..., min_length=1, max_length=50, description="新标题")
+    
+    
 class CreateHistoryRequest(BaseModel):
     """创建历史记录请求"""
     title: str = Field(..., max_length=200)

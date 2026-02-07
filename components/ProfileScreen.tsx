@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Settings, Zap, PlusCircle, Users, Edit2, X, Copy, Camera, FileText, ChevronRight, Crown, Moon, Sun, LogOut, AlertTriangle, Trash2, MessageSquare, Mail, MessageCircle, Hash, Check, Loader2 } from 'lucide-react';
+import { Settings, Zap, PlusCircle, Users, Edit2, X, Copy, Camera, FileText, ChevronRight, ChevronLeft, Crown, Moon, Sun, LogOut, AlertTriangle, Trash2, MessageSquare, Mail, MessageCircle, Hash, Check, Loader2 } from 'lucide-react';
 import { UserState, HistoryItem } from '../types';
-import { updateProfile, updateTheme, getHistoryList, deleteHistory as apiDeleteHistory, getInviteCode, applyInviteCode, HistoryItem as ApiHistoryItem, getUserDetails, uploadAvatar } from '../utils/api';
+import { updateProfile, updateTheme, getHistoryList, deleteHistory as apiDeleteHistory, getInviteCode, applyInviteCode, HistoryItem as ApiHistoryItem, getUserDetails, uploadAvatar, renameHistory } from '../utils/api';
 import { supabase } from '../utils/supabaseClient'; // Import supabase client
 import Cropper from 'react-easy-crop';
 import { getCroppedImg, compressImage } from '../utils/imageUtils';
@@ -15,9 +15,10 @@ interface ProfileScreenProps {
   onToggleTheme: () => void;
   onLogout: () => void;
   onLoadHistory: (item: HistoryItem) => void;
+  onBack?: () => void;
 }
 
-export const ProfileScreen = React.memo<ProfileScreenProps>(({ user, onRecharge, onUpdateProfile, onToggleTheme, onLogout, onLoadHistory }) => {
+export const ProfileScreen = React.memo<ProfileScreenProps>(({ user, onRecharge, onUpdateProfile, onToggleTheme, onLogout, onLoadHistory, onBack }) => {
   console.log("ProfileScreen Re-rendered. user:", user.username);
   const [showInvite, setShowInvite] = useState(false);
   const [showAllHistory, setShowAllHistory] = useState(false);
@@ -41,6 +42,11 @@ export const ProfileScreen = React.memo<ProfileScreenProps>(({ user, onRecharge,
   // 删除确认相关状态
   const [deleteConfirmItem, setDeleteConfirmItem] = useState<HistoryItem | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+
+  // 重命名相关状态
+  const [editingHistoryId, setEditingHistoryId] = useState<string | null>(null);
+  const [editTitle, setEditTitle] = useState('');
+  const [isRenaming, setIsRenaming] = useState(false);
 
   // 邀请相关状态
   const [myInviteCode, setMyInviteCode] = useState<string>('');
@@ -310,6 +316,60 @@ export const ProfileScreen = React.memo<ProfileScreenProps>(({ user, onRecharge,
       setShowSettings(false);
       setIsSettingsClosing(false);
     }, 300);
+  };
+
+  // 处理重命名
+  const handleStartRename = (item: any, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setEditingHistoryId(item.id);
+    // Extract name from title: "Name" from "Name Gender Report"
+    // If name field exists, use it. If not, try to parse from title.
+    // Assuming backend returns item.name if available, else parse title.
+    const currentName = item.name || (item.title ? item.title.split(' ')[0] : '未命名');
+    setEditTitle('');
+  };
+
+  const handleCancelRename = () => {
+    setEditingHistoryId(null);
+    setEditTitle('');
+  };
+
+  const handleSaveRename = async () => {
+    if (!editingHistoryId || !editTitle.trim()) return;
+
+    setIsRenaming(true);
+    try {
+      // Find current item to get gender
+      const item = historyItems.find(h => h.id === editingHistoryId);
+      const genderText = item?.gender === 'male' ? '男' : '女';
+      // Reconstruct title: "NewName Gender Report"
+      const finalTitle = `${editTitle.trim()} ${genderText} 基准测试报告`;
+
+      const response = await renameHistory(editingHistoryId, finalTitle);
+      if (response) {
+        setHistoryItems(prev => prev.map(item =>
+          item.id === editingHistoryId
+            ? { ...item, title: finalTitle, name: editTitle.trim() }
+            : item
+        ));
+        // 同步缓存
+        localStorage.setItem('fateDiffusion_historyCache', JSON.stringify(historyItems.map(item =>
+          item.id === editingHistoryId
+            ? { ...item, title: finalTitle, name: editTitle.trim() }
+            : item
+        )));
+        showToast("重命名成功");
+        setEditingHistoryId(null);
+        setEditTitle('');
+      } else {
+        showToast('重命名失败，请重试');
+      }
+    } catch (error) {
+      console.error('Failed to rename history:', error);
+      showToast('重命名失败，请重试');
+    } finally {
+      setIsRenaming(false);
+    }
   };
 
   const confirmLogout = () => {
@@ -796,19 +856,54 @@ export const ProfileScreen = React.memo<ProfileScreenProps>(({ user, onRecharge,
                       {item.tLevel || 'T1'}
                     </div>
                     <div className="flex-1">
-                      <h3 className="text-sm font-medium mb-0.5">{displayTitle}</h3>
+                      {editingHistoryId === item.id ? (
+                        <div className="flex items-center gap-2" onClick={e => e.stopPropagation()}>
+                          <input
+                            type="text"
+                            value={editTitle}
+                            onChange={e => setEditTitle(e.target.value)}
+                            placeholder="请输入新名称"
+                            className="flex-1 bg-white/50 dark:bg-black/20 border border-amber-500/50 rounded-lg px-2 py-1 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-amber-500"
+                            autoFocus
+                            onKeyDown={e => {
+                              if (e.key === 'Enter') handleSaveRename();
+                              if (e.key === 'Escape') handleCancelRename();
+                            }}
+                          />
+                          <button onClick={handleSaveRename} disabled={isRenaming} className="p-1 text-green-500 hover:bg-green-500/10 rounded">
+                            {isRenaming ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
+                          </button>
+                          <button onClick={handleCancelRename} className="p-1 text-gray-400 hover:bg-gray-500/10 rounded">
+                            <X size={16} />
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="group/title flex items-center justify-between pr-2">
+                          <h3 className="text-sm font-medium mb-0.5 truncate pr-2">{displayTitle}</h3>
+                        </div>
+                      )}
+
                       <p className="text-[10px] text-gray-400">{item.date}</p>
                     </div>
                   </div>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setDeleteConfirmItem(item);
-                    }}
-                    className="p-2 text-gray-400 hover:text-red-500 transition-colors"
-                  >
-                    <Trash2 size={16} />
-                  </button>
+                  <div className="flex items-center gap-2 h-full"> {/* Flex row for actions, centered */}
+                    <button
+                      onClick={(e) => handleStartRename(item, e)}
+                      className="text-[10px] text-gray-400 hover:text-amber-500 flex items-center gap-1 transition-colors bg-gray-100 dark:bg-white/5 px-2 py-1 rounded-md"
+                    >
+                      <Edit2 size={10} />
+                      <span>重命名</span>
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setDeleteConfirmItem(item);
+                      }}
+                      className="p-2 text-gray-400 hover:text-red-500 transition-colors"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
                 </div>
               );
             })}
@@ -822,7 +917,14 @@ export const ProfileScreen = React.memo<ProfileScreenProps>(({ user, onRecharge,
       <div className="absolute bottom-[-10%] right-[-20%] w-[80%] h-[40%] bg-gray-500/15 rounded-full blur-[100px] pointer-events-none"></div>
 
       <header className="pt-12 pb-4 px-6 flex justify-between items-center z-10">
-        <h1 className="text-lg font-bold tracking-wide">个人中心</h1>
+        <div className="flex items-center gap-2">
+          {onBack && (
+            <button onClick={onBack} className="w-8 h-8 rounded-full bg-white/50 dark:bg-white/10 shadow-sm flex items-center justify-center text-gray-800 dark:text-gray-200 active:scale-95 transition-transform backdrop-blur-sm">
+              <ChevronLeft size={20} />
+            </button>
+          )}
+          <h1 className="text-lg font-bold tracking-wide">个人中心</h1>
+        </div>
         <div className="flex items-center gap-3">
           <button onClick={() => setShowInvite(true)} className="p-2 bg-gradient-to-b from-[#E8D9C5] to-[#CABA9C] ring-2 ring-white/90 ring-inset rounded-full text-white shadow-lg active:scale-95 transition-transform flex items-center gap-1 px-3">
             <Users size={16} />
@@ -998,11 +1100,40 @@ export const ProfileScreen = React.memo<ProfileScreenProps>(({ user, onRecharge,
                       {item.tLevel || 'T1'}
                     </div>
                     <div className="flex-1">
-                      <h3 className="text-sm font-medium mb-0.5">{displayTitle}</h3>
+                      {editingHistoryId === item.id ? (
+                        <div className="flex items-center gap-2 mb-0.5" onClick={e => e.stopPropagation()}>
+                          <input
+                            type="text"
+                            value={editTitle}
+                            onChange={e => setEditTitle(e.target.value)}
+                            placeholder="请输入新名称"
+                            className="w-full bg-white/50 dark:bg-black/20 border border-amber-500/50 rounded-lg px-2 py-1 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-amber-500"
+                            autoFocus
+                            onKeyDown={e => {
+                              if (e.key === 'Enter') handleSaveRename();
+                              if (e.key === 'Escape') handleCancelRename();
+                            }}
+                          />
+                          <button onClick={handleSaveRename} disabled={isRenaming} className="p-1 text-green-500 hover:bg-green-500/10 rounded">
+                            {isRenaming ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
+                          </button>
+                          <button onClick={handleCancelRename} className="p-1 text-gray-400 hover:bg-gray-500/10 rounded">
+                            <X size={14} />
+                          </button>
+                        </div>
+                      ) : (
+                        <h3 className="text-sm font-medium mb-0.5">{displayTitle}</h3>
+                      )}
                       <p className="text-[10px] text-gray-400">{item.date}</p>
                     </div>
-                    <div className={`px-2 py-1 rounded text-[10px] font-medium bg-green-500/10 text-green-600`}>
-                      已完成
+                    <div className="flex flex-col items-end gap-1">
+                      <button
+                        onClick={(e) => handleStartRename(item, e)}
+                        className="text-[10px] text-gray-300 dark:text-gray-600 hover:text-amber-500 flex items-center gap-1 transition-colors px-1"
+                      >
+                        <Edit2 size={10} />
+                        <span>重命名</span>
+                      </button>
                     </div>
                   </div>
                 );

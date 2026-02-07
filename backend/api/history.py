@@ -9,7 +9,8 @@ from typing import List
 from schemas.history import (
     CreateHistoryRequest,
     HistoryResponse,
-    HistoryListResponse
+    HistoryListResponse,
+    UpdateHistoryTitleRequest
 )
 from utils.supabase_client import get_supabase
 from api.auth import get_current_user
@@ -108,3 +109,33 @@ async def delete_history(
     supabase.table("history_items").delete().eq("id", history_id).execute()
     
     return {"message": "删除成功"}
+
+
+@router.put("/{history_id}/title", response_model=HistoryResponse, summary="重命名历史记录")
+async def rename_history(
+    history_id: str,
+    request: UpdateHistoryTitleRequest,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    更新历史记录标题
+    """
+    supabase = get_supabase()
+    
+    # 验证记录存在且属于当前用户
+    existing = supabase.table("history_items")\
+        .select("id")\
+        .eq("id", history_id)\
+        .eq("user_id", current_user["id"])\
+        .execute()
+    
+    if not existing.data:
+        raise HTTPException(status_code=404, detail="历史记录不存在")
+    
+    # 更新标题
+    result = supabase.table("history_items")\
+        .update({"title": request.title})\
+        .eq("id", history_id)\
+        .execute()
+        
+    return HistoryResponse(**result.data[0])

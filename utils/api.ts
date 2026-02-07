@@ -322,6 +322,16 @@ export async function deleteHistory(historyId: string): Promise<{ message: strin
     });
 }
 
+/**
+         * 重命名历史记录
+         */
+export async function renameHistory(historyId: string, title: string): Promise<HistoryItem> {
+    return request(`/history/${historyId}/title`, {
+        method: 'PUT',
+        body: JSON.stringify({ title }),
+    });
+}
+
 // ==================== AI 对话 API ====================
 
 export interface ChatMessage {

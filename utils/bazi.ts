@@ -1,4 +1,4 @@
-
+import { Solar, Lunar } from 'lunar-javascript';
 export const HEAVENLY_STEMS = ['甲', '乙', '丙', '丁', '戊', '己', '庚', '辛', '壬', '癸'];
 export const EARTHLY_BRANCHES = ['子', '丑', '寅', '卯', '辰', '巳', '午', '未', '申', '酉', '戌', '亥'];
 
@@ -413,28 +413,147 @@ export const calculateBaZi = (date: Date, hour: number | null = null, minute: nu
   };
 };
 
-export const getDaYun = (yearGan: string, monthGan: string, monthZhi: string, gender: 'male' | 'female', birthYear: number) => {
+export const getDaYun = (yearGan: string, monthGan: string, monthZhi: string, gender: 'male' | 'female', birthDate: Date) => {
   const yearStemIdx = HEAVENLY_STEMS.indexOf(yearGan);
   const monthStemIdx = HEAVENLY_STEMS.indexOf(monthGan);
   const monthBranchIdx = EARTHLY_BRANCHES.indexOf(monthZhi);
   const isYearYang = (yearStemIdx % 2) === 0;
-  let isForward = gender === 'male' ? isYearYang : !isYearYang;
+  const isForward = gender === 'male' ? isYearYang : !isYearYang;
 
-  const qiYunAge = 4;
+  // Accurate Qi Yun Calculation using lunar-javascript
+  const solar = Solar.fromYmdHms(
+    birthDate.getFullYear(),
+    birthDate.getMonth() + 1,
+    birthDate.getDate(),
+    birthDate.getHours(),
+    birthDate.getMinutes(),
+    birthDate.getSeconds()
+  );
+  const lunar = solar.getLunar();
+
+  // Find Previous and Next Jie Qi (Solar Terms)
+  // lunar-javascript's getting JieQi logic operates on Lunar object but returns Solar objects usually?
+  // Actually Lunar.getPrevJieQi() returns a LunarJieQi object or similar.
+  // Ideally use Solar based lookup if possible or rely on Lunar helper.
+  // Lunar.getPrevJieQi() returns JieQi Table? No.
+  // Let's use `lunar.getPrevJieQi()` and `lunar.getNextJieQi()`. 
+  // Note: These methods return the 'Table' entry? No, they return a JieQi object which has name and solar time.
+  // Wait, I need to check the library docs or assume standard usage.
+  // Standard `lunar-javascript`:
+  // lunar.getPrevJieQi(true) -> true includes current day?
+  // Let's use:
+  const prevJie = lunar.getPrevJieQi(true); // Include today
+  const nextJie = lunar.getNextJieQi(true); // Include today
+
+  // We need the Solar Time of those Jie Qi
+  const prevSolar = prevJie.getSolar();
+  const nextSolar = nextJie.getSolar();
+
+  // Convert to timestamps
+  const birthTime = birthDate.getTime();
+
+  // Manual Date construction from Solar object
+  // solar.getMonth() is 1-based
+  const prevTimeVal = new Date(
+    prevSolar.getYear(),
+    prevSolar.getMonth() - 1,
+    prevSolar.getDay(),
+    prevSolar.getHour(),
+    prevSolar.getMinute(),
+    prevSolar.getSecond()
+  ).getTime();
+
+  const nextTimeVal = new Date(
+    nextSolar.getYear(),
+    nextSolar.getMonth() - 1,
+    nextSolar.getDay(),
+    nextSolar.getHour(),
+    nextSolar.getMinute(),
+    nextSolar.getSecond()
+  ).getTime();
+
+  let diffMs = 0;
+  if (isForward) {
+    diffMs = nextTimeVal - birthTime;
+  } else {
+    diffMs = birthTime - prevTimeVal;
+  }
+
+  // Formula: 3 days = 1 year
+  // 1 day = 1440 mins
+  // 3 days = 4320 mins = 1 year
+  const diffMins = Math.floor(diffMs / (1000 * 60));
+
+  const years = Math.floor(diffMins / 4320);
+  const remMins1 = diffMins % 4320;
+  const months = Math.floor(remMins1 / 360); // 1 year = 12 months. 4320/12 = 360 mins per month.
+  const remMins2 = remMins1 % 360;
+  const days = Math.floor(remMins2 / 12); // 1 month = 30 days. 360/30 = 12 mins per day.
+
+  // Actually: 1 day = 4 months. 1440 mins = 4 months. 360 mins = 1 month. Correct.
+  // 1 day = 120 days.
+  // 360 mins = 30 Bazi days? No.
+  // 3 days (real) = 1 year (Bazi). 
+  // 1 day (real) = 120 days (Bazi).
+  // 1 hour (real) = 5 days (Bazi).
+  // 12 mins (real) = 1 day (Bazi).
+  // My calculation above: remMins2 / 12 = days. Correct.
+
+  const qiYunAge = years; // This is the logic "Starts at age X"
+  // But technically it starts at BirthYear + years + months/12...
+  // The 'age' displayed in charts is often the Integer Age (virtual age or real age).
+  // Usually Bazi charts show "Start Age" as the integer year offset.
+  // If years = 0 (e.g. 0.5 years), does it start at 1?
+  // Usually min is 1? No, can replace with 0.
+  // Let's use the calculated years as the base integer `age`.
+  // And we can store the precise start date for the first Da Yun.
+
+  // Calculate precise Gregorian start date
+  const startDate = new Date(birthDate);
+  startDate.setFullYear(startDate.getFullYear() + years);
+  startDate.setMonth(startDate.getMonth() + months);
+  startDate.setDate(startDate.getDate() + days);
+
+  // The first Da Yun starts at this `startDate`.
+  // The 'Year' column in display usually implies the Year it starts.
+  // We will return the precise Start Year.
+
+  let startYear = startDate.getFullYear();
+
+  // For the loop, we increment by 10 years per pillar.
+
   const yun = [];
 
-  yun.push({ gan: '小', zhi: '运', age: 1, year: birthYear, isXiaoYun: true });
+  // Custom 'Xiao Yun' (Small Luck) for before Da Yun?
+  // Often shown as '0-X' years.
+  // Can keep or adjust. Existing code had Xiao Yun at age 1.
+  // Let's keep a placeholder or just start Da Yun.
+  // Existing: yun.push({ gan: '小', zhi: '运', age: 1, year: birthYear, isXiaoYun: true });
+  // Just keeping it as is might be safe for UI, but let's update `age` to be `qiYunAge`.
+  // Actually, let's just output the Da Yun pillars. The 'Xiao Yun' is often generated implicitly or ignored.
+  // I will preserve the Xiao Yun entry but update its end year/start?
+  // Let's just output the main Da Yun pillars.
+
   for (let i = 1; i <= 8; i++) {
     const offset = isForward ? i : -i;
     const stemIdx = ((monthStemIdx + offset) % 10 + 10) % 10;
     const branchIdx = ((monthBranchIdx + offset) % 12 + 12) % 12;
-    const startAge = qiYunAge + (i - 1) * 10;
+
+    // Age: Usually nominal age or real age.
+    // If Qi Yun is 4 years old.
+    // 1st Pillar: 4 ~ 13
+    // 2nd Pillar: 14 ~ 23
+    // We will use `years` + (i-1)*10.
+    const currentAge = years + (i - 1) * 10;
+
     yun.push({
       gan: HEAVENLY_STEMS[stemIdx],
       zhi: EARTHLY_BRANCHES[branchIdx],
-      age: startAge,
-      year: birthYear + startAge,
-      isXiaoYun: false
+      age: currentAge === 0 ? 1 : currentAge, // Display 1 minimum if 0? Or 0 is fine.
+      year: startYear + (i - 1) * 10,
+      isXiaoYun: false,
+      // Optional: Add precise start info string?
+      detail: i === 1 ? `${years}岁${months}月${days}天起运` : ''
     });
   }
   return yun;

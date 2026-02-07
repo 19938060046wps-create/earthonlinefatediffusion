@@ -63,14 +63,23 @@ def create_user(phone: str) -> dict:
     supabase = get_supabase()
     
     # 生成随机用户名
+    # 生成随机用户名
     username = f"User_{random.randint(10000, 99999)}"
     
+    # 立即生成邀请码 (带唯一性检查)
+    while True:
+        invite_code = generate_invite_code()
+        check = supabase.table("users").select("id").eq("invite_code", invite_code).execute()
+        if not check.data:
+            break
+            
     result = supabase.table("users").insert({
         "phone": phone,
         "username": username,
-        "balance": 88,  # 初始赠送 88 算力
+        "balance": 88,
         "has_agreed_privacy": False,
-        "theme": "light"
+        "theme": "light",
+        "invite_code": invite_code
     }).execute()
     
     return result.data[0]
@@ -103,14 +112,23 @@ def create_user_by_email(email: str) -> dict:
     supabase = get_supabase()
     
     # 生成随机用户名
+    # 生成随机用户名
     username = f"User_{random.randint(10000, 99999)}"
     
+    # 立即生成邀请码 (带唯一性检查)
+    while True:
+        invite_code = generate_invite_code()
+        check = supabase.table("users").select("id").eq("invite_code", invite_code).execute()
+        if not check.data:
+            break
+
     result = supabase.table("users").insert({
         "email": email,
         "username": username,
-        "balance": 88,  # 初始赠送 88 算力
+        "balance": 88,
         "has_agreed_privacy": False,
-        "theme": "light"
+        "theme": "light",
+        "invite_code": invite_code
     }).execute()
     
     return result.data[0]
@@ -131,13 +149,40 @@ def create_user_combined(phone: str, email: str) -> dict:
     # 生成随机用户名
     username = f"User_{random.randint(10000, 99999)}"
     
+    # 立即生成邀请码
+    invite_code = generate_invite_code()
+    # 简单防重试（极低概率冲突，若冲突这行会报错，生产环境应 loop retry）
+    # 但 generate_invite_code 是纯随机，这里我们直接调用它的逻辑或者让它返回唯一
+    # 修正：generate_invite_code 是无状态的，我们需要保证唯一性。
+    # 为了复用 get_user_invite_code 里的唯一性逻辑，最好提取出来。
+    # 但 get_user_invite_code 是针对已有用户的。
+    # 让我们简单实现一个 retry loop 在这里，或者更好的是修改 generate_invite_code 让它支持 check。
+    
+    # 实际上，为了保持代码整洁，我们先生成，如果 insert 失败（Unique Constraint），外层会捕获。
+    # 但 users 表 invite_code 有 unique 索引吗？ 应该有。
+    # 让我们先看看 `generate_invite_code` 的定义，它是纯随机。
+    # 我们可以在这里直接生成。
+    
+    # Re-reading user_service.py: generate_invite_code is at line 231.
+    # We should use a loop to ensure uniqueness if we want to be safe, 
+    # OR since we are inside `create_user`, we can just generate one and if it fails, the user creation fails? 
+    # No, that's bad UX.
+    
+    # Let's perform a check loop.
+    while True:
+        invite_code = generate_invite_code()
+        check = supabase.table("users").select("id").eq("invite_code", invite_code).execute()
+        if not check.data:
+            break
+
     result = supabase.table("users").insert({
         "phone": phone,
         "email": email,
         "username": username,
-        "balance": 88,  # 初始赠送 88 算力
+        "balance": 88,
         "has_agreed_privacy": False,
-        "theme": "light"
+        "theme": "light",
+        "invite_code": invite_code
     }).execute()
     
     return result.data[0]

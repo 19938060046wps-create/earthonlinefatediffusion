@@ -306,6 +306,7 @@ const App: React.FC = () => {
             }}
             username={user.username}
             avatar={user.avatar}
+            onLogout={handleLogout}
           />
         );
       case Screen.MATCH:
