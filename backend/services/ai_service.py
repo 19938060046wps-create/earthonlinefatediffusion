@@ -41,6 +41,7 @@ def generate_ai_response(chart_data: Optional[dict], user_message: str) -> str:
     :param user_message: 用户消息
     :return: AI 回复文本
     """
+    try:
         model = get_gemini_model()
         if not model:
             # Mask the error for the user, but log it
@@ -72,8 +73,6 @@ def generate_ai_response(chart_data: Optional[dict], user_message: str) -> str:
                 1. 保持"高维生物计算机"的冷峻、理性、科技感人设。
                 2. 使用物理学、计算机科学、博弈论术语解释玄学现象。
                 3. **回答需要详细、深入分析**，不要敷衍，但请**不要**重新输出《五行能量矢量表》(Five Element Energy Vector Table) 或《双重评级》(Dual Rating)，也不要输出长篇的硬件规格扫描。
-                4. 聚焦于针对用户的问题进行深度逻辑推演。
-                5. 语气格式示例："System Alert: 检测到情感模块波动..." 或 "Logic Kernel: 深度扫描显示..."
                 4. 聚焦于针对用户的问题进行深度逻辑推演。
                 5. 语气格式示例："System Alert: 检测到情感模块波动..." 或 "Logic Kernel: 深度扫描显示..."
                 """
@@ -182,9 +181,6 @@ def process_chat_message(user_id: str, history_id: str, message: str) -> dict:
         raise e  # Re-raise to let API layer handle status code
 
     # 6. 保存 AI 回复 (只有成功时才保存)
-    ai_msg = save_chat_message(history_id, ai_text, False)
-    
-    # 6. 保存 AI 回复
     ai_msg = save_chat_message(history_id, ai_text, False)
     
     return {

@@ -617,7 +617,7 @@ export const ProfileScreen = React.memo<ProfileScreenProps>(({ user, onRecharge,
       {showRechargeModal && (
         <div className={`fixed inset-0 z-[100] flex items-end sm:items-center justify-center transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] ${isRechargeClosing ? 'bg-black/0 backdrop-blur-0' : 'bg-black/60 backdrop-blur-sm'}`}>
           <div
-            className={`bg-white dark:bg-[#1C1C1E] w-full sm:max-w-md rounded-t-[2.5rem] sm:rounded-3xl p-6 pb-24 sm:pb-6 shadow-2xl transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] relative z-[101] ${isRechargeClosing ? 'translate-y-full opacity-0 scale-95' : 'translate-y-0 opacity-100 scale-100'}`}
+            className={`bg-white dark:bg-[#1C1C1E] w-full sm:max-w-md rounded-t-[2.5rem] sm:rounded-3xl p-6 pb-2 shadow-2xl transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] relative z-[101] ${isRechargeClosing ? 'translate-y-full opacity-0 scale-95' : 'translate-y-0 opacity-100 scale-100'}`}
             style={{
               animation: !isRechargeClosing ? 'iosSlideUp 0.5s cubic-bezier(0.32, 0.72, 0, 1) forwards' : 'none',
               willChange: 'transform, opacity'
@@ -630,7 +630,7 @@ export const ProfileScreen = React.memo<ProfileScreenProps>(({ user, onRecharge,
               }
             `}</style>
             <button onClick={handleCloseRechargeModal} className="absolute top-6 right-6 text-gray-400 hover:text-gray-600 transition-colors p-2 bg-gray-100 dark:bg-white/5 rounded-full"><X size={18} /></button>
-            <h2 className="text-xl font-bold mb-6 text-center text-gray-900 dark:text-white">
+            <h2 className="text-xl font-bold mb-4 text-center text-gray-900 dark:text-white">
               {paymentOrder ? '支付确认' : '充值套餐'}
             </h2>
 
@@ -689,28 +689,28 @@ export const ProfileScreen = React.memo<ProfileScreenProps>(({ user, onRecharge,
                   }
                   .animate-breathe { animation: breathe 2s ease-in-out infinite; }
                 `}</style>
-                <div className="text-xs text-gray-400 mb-4 tracking-widest">请按金额扫码支付</div>
-                <div className="text-5xl font-black text-red-500 mb-2 flex items-baseline">
-                  <span className="text-2xl mr-1">￥</span>
+                {/* REMOVED: <div className="text-xs text-gray-400 mb-1 tracking-widest">支持支付宝/微信</div> */}
+                <div className="text-4xl font-black text-red-500 mb-1 flex items-baseline">
+                  <span className="text-xl mr-1">￥</span>
                   {paymentOrder.finalAmount.toFixed(2)}
                 </div>
 
-                <div className="flex items-center gap-1.5 mb-6 text-amber-500 font-mono text-sm bg-amber-500/10 px-3 py-1 rounded-full uppercase tracking-wider">
+                <div className="flex items-center gap-1.5 mb-3 text-amber-500 font-mono text-sm bg-amber-500/10 px-3 py-1 rounded-full uppercase tracking-wider">
                   <span>剩余支付时间</span>
                   <span className="font-bold">
                     {Math.floor(paymentCountdown / 60)}:{(paymentCountdown % 60).toString().padStart(2, '0')}
                   </span>
                 </div>
 
-                <div className="text-sm font-bold text-gray-800 dark:text-gray-200 mb-6 bg-red-50 dark:bg-red-900/20 px-6 py-1.5 rounded-full border border-red-200 dark:border-red-800/50">
+                <div className="text-sm font-bold text-gray-800 dark:text-gray-200 mb-3 bg-red-50 dark:bg-red-900/20 px-6 py-1.5 rounded-full border border-red-200 dark:border-red-800/50">
                   请按此金额支付，切勿修改
                 </div>
-                <div className="w-48 h-48 bg-white dark:bg-white rounded-2xl flex items-center justify-center border-2 border-gray-100 dark:border-white/20 relative overflow-hidden mb-4 shadow-inner">
+                <div className="w-36 h-36 bg-white dark:bg-white rounded-2xl flex items-center justify-center border-2 border-gray-100 dark:border-white/20 relative overflow-hidden mb-2 shadow-inner">
                   <img src="/payment_qr.jpg" alt="收款二维码" className="w-full h-full object-contain" />
                 </div>
 
-                <div className="flex items-center justify-center gap-4 mb-8 w-full px-6">
-                  <img src="/pay_channels.png" alt="支付渠道" className="h-8 w-full object-contain opacity-90" />
+                <div className="flex items-center justify-center gap-4 mb-2 w-full px-6">
+                  <img src="/pay_channels.png" alt="支付渠道" className="h-5 w-full object-contain opacity-90" />
                 </div>
 
                 <div className="flex flex-col items-center gap-4 w-full px-4">

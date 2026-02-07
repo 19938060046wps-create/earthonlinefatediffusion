@@ -68,16 +68,24 @@ export const SliderCaptcha: React.FC<SliderCaptchaProps> = ({ onSuccess, onClose
     const handleTouchEnd = () => handleEnd();
 
     React.useEffect(() => {
+        const preventScroll = (e: TouchEvent) => {
+            if (isDragging) {
+                e.preventDefault();
+                handleMove(e.touches[0].clientX);
+            }
+        };
+
         if (isDragging) {
             window.addEventListener('mousemove', handleMouseMove);
             window.addEventListener('mouseup', handleMouseUp);
-            window.addEventListener('touchmove', handleTouchMove);
+            // Use { passive: false } to allow preventing default
+            window.addEventListener('touchmove', preventScroll, { passive: false });
             window.addEventListener('touchend', handleTouchEnd);
         }
         return () => {
             window.removeEventListener('mousemove', handleMouseMove);
             window.removeEventListener('mouseup', handleMouseUp);
-            window.removeEventListener('touchmove', handleTouchMove);
+            window.removeEventListener('touchmove', preventScroll);
             window.removeEventListener('touchend', handleTouchEnd);
         };
     }, [isDragging, sliderPosition]);
@@ -101,7 +109,8 @@ export const SliderCaptcha: React.FC<SliderCaptchaProps> = ({ onSuccess, onClose
                 ref={containerRef}
                 className={`relative h-12 bg-black/40 border border-white/10 rounded-full select-none ${isFailed ? 'animate-shake' : ''}`}
                 style={{
-                    '--slider-p': sliderPosition / 100
+                    '--slider-p': sliderPosition / 100,
+                    touchAction: 'none' // Prevent browser handling of gestures
                 } as React.CSSProperties}
             >
                 {/* 已滑动区域 (Track) */}

@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { Zap, ChevronLeft, ChevronDown, ArrowUp, Gem, Trees, Waves, Flame, Mountain, X, Crown } from 'lucide-react';
-import { PROVINCES, CITIES, getDistricts } from '../utils/china_regions';
+import { CHINA_REGIONS, getCitiesOfProvince, getDistrictsOfCity, Region } from '../utils/china_regions';
 import { calculateBaZi, BaZiChart, getDaYun, getElement } from '../utils/bazi';
 import { BaZiData, ChatMessage, HistoryItem } from '../types';
 import { DetailedChartScreen } from './DetailedChartScreen';
@@ -56,7 +56,10 @@ export const ConsoleScreen = React.memo<ConsoleScreenProps>(({ setFullScreen, ba
   const [birthDate, setBirthDate] = useState<{ year: number; month: number; day: number; hour: number | null; minute: number | null }>({
     year: 1998, month: 5, day: 21, hour: 9, minute: 30
   });
-  const [location, setLocation] = useState({ province: '北京市', city: '市辖区', district: '东城区' });
+  const [location, setLocation] = useState<{ province: string, city: string, district: string, lat?: number, lng?: number }>({
+    province: '北京市', city: '市辖区', district: '东城区',
+    lat: 39.9285, lng: 116.4163
+  });
   const [chart, setChart] = useState<BaZiChart | null>(null);
   const [daYun, setDaYun] = useState<any[]>([]);
   const [isDatePickerOpen, setDatePickerOpen] = useState(false);
@@ -299,7 +302,7 @@ export const ConsoleScreen = React.memo<ConsoleScreenProps>(({ setFullScreen, ba
       const h = item.birthHour || 9;
 
       const dateObj = new Date(y, m - 1, d, h);
-      const result = calculateBaZi(dateObj);
+      const result = calculateBaZi(dateObj, h, 0); // Pass hour explicitly
       const dy = getDaYun(
         result.year.gan,
         result.month.gan,
@@ -326,11 +329,32 @@ export const ConsoleScreen = React.memo<ConsoleScreenProps>(({ setFullScreen, ba
     }
   }, [initialHistoryContext]);
 
+  // Recalculate chart whenever Date or Location changes (Silent update)
+  useEffect(() => {
+    if (hasInitialized && birthDate.year && birthDate.month && birthDate.day) {
+      const h = birthDate.hour;
+      const m = birthDate.minute;
+      const dateObj = new Date(birthDate.year, birthDate.month - 1, birthDate.day, h || 0);
+      // Pass longitude for True Solar Time
+      const result = calculateBaZi(dateObj, h, m, location.lng);
+      const dy = getDaYun(
+        result.year.gan,
+        result.month.gan,
+        result.month.zhi,
+        gender,
+        birthDate.year
+      );
+      setChart(result);
+      setDaYun(dy);
+    }
+  }, [birthDate, location, gender, hasInitialized]);
+
   useEffect(() => {
     if (showResult && chatEndRef.current) {
+      // Only scroll on new message arrival (length change), not every token update
       chatEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }
-  }, [showResult, messages]);
+  }, [showResult, messages.length, isSending]); // Added isSending to ensure scroll on start of generation
 
   // 1. 初始化出厂参数 (原 startBenchmark)
   const initializeParameters = () => {
@@ -344,8 +368,9 @@ export const ConsoleScreen = React.memo<ConsoleScreenProps>(({ setFullScreen, ba
       return;
     }
 
+    // Initial calculation with animation
     const dateObj = new Date(birthDate.year, birthDate.month - 1, birthDate.day, birthDate.hour || 0);
-    const result = calculateBaZi(dateObj, birthDate.hour, birthDate.minute);
+    const result = calculateBaZi(dateObj, birthDate.hour, birthDate.minute, location.lng);
     const dy = getDaYun(
       result.year.gan,
       result.month.gan,
@@ -395,7 +420,8 @@ export const ConsoleScreen = React.memo<ConsoleScreenProps>(({ setFullScreen, ba
       birthDay: birthDate.day,
       birthHour: birthDate.hour,
       gender: gender,
-      name: name
+      name: name,
+      // Pass location info if API supported it, but mainly needed for Prompt below
     };
 
     // 保存历史记录到后端 (创建 Session)
@@ -418,8 +444,10 @@ export const ConsoleScreen = React.memo<ConsoleScreenProps>(({ setFullScreen, ba
       setAnalyzing(true);
 
       // 开始 AI 对话 (模拟流式输出)
-      // 构造 Prompt (后续会替换为真 Prompt)
-      const prompt = `分析命盘：${JSON.stringify(baziData)}，性别：${gender === 'male' ? '男' : '女'}。`;
+      // 构造 Prompt (后续会替换为真 Prompt) - 优化：移除 JSON，使用自然语言，避免 Token 浪费和隐私泄露
+      const locationStr = `${location.province}${location.city}${location.district}`;
+      const coordStr = location.lng ? ` (经度: ${location.lng.toFixed(2)}°, 真太阳时修正)` : '';
+      const prompt = `请分析我的命盘，性别：${gender === 'male' ? '男' : '女'}，出生地：${locationStr}${coordStr}。`;
 
       // 调用后端 sendChatMessage
       const response = await sendChatMessage(savedHistory.id, prompt);
@@ -671,44 +699,67 @@ export const ConsoleScreen = React.memo<ConsoleScreenProps>(({ setFullScreen, ba
 
   const renderLocationPicker = () => {
     if (!isLocationPickerOpen) return null;
-    const cityList = CITIES[tempLocation.province] || [];
-    const districtList = getDistricts(tempLocation.city);
+
+    // Get lists based on current selection
+    const cityList = getCitiesOfProvince(tempLocation.province);
+    const districtList = getDistrictsOfCity(tempLocation.province, tempLocation.city);
+
     return (
       <div className="fixed inset-0 z-[100] flex flex-col justify-end bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
         <div className="bg-white dark:bg-[#1E1E1E] rounded-t-3xl p-6 pb-10 mb-20 animate-in slide-in-from-bottom duration-300">
           <h3 className="text-lg font-bold mb-6 text-gray-900 dark:text-white">选择出生地点</h3>
           <div className="flex gap-2 mb-6 h-56">
+            {/* Province Column */}
             <div className="flex-1 bg-gray-50 dark:bg-black/20 rounded-xl overflow-y-auto hide-scrollbar p-2">
-              {PROVINCES.map(p => (
-                <div key={p}
+              {CHINA_REGIONS.map(p => (
+                <div key={p.name}
                   onClick={() => {
-                    const firstCity = CITIES[p]?.[0] || '市辖区';
-                    const firstDist = getDistricts(firstCity)[0];
-                    setTempLocation({ province: p, city: firstCity, district: firstDist });
+                    const firstCity = p.children?.[0];
+                    const firstDist = firstCity?.children?.[0];
+                    setTempLocation({
+                      province: p.name,
+                      city: firstCity?.name || '',
+                      district: firstDist?.name || '',
+                      lat: firstDist?.lat,
+                      lng: firstDist?.lng
+                    });
                   }}
-                  className={`py-2.5 px-2 text-xs text-center rounded-lg mb-1 transition-colors ${tempLocation.province === p ? 'bg-white dark:bg-white/20 shadow-sm font-bold text-primary' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/5'}`}
+                  className={`py-2.5 px-2 text-xs text-center rounded-lg mb-1 transition-colors ${tempLocation.province === p.name ? 'bg-white dark:bg-white/20 shadow-sm font-bold text-primary' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/5'}`}
                 >
-                  {p}
+                  {p.name}
                 </div>
               ))}
             </div>
+
+            {/* City Column */}
             <div className="flex-1 bg-gray-50 dark:bg-black/20 rounded-xl overflow-y-auto hide-scrollbar p-2">
               {cityList.map(c => (
-                <div key={c}
-                  onClick={() => setTempLocation({ ...tempLocation, city: c, district: getDistricts(c)[0] })}
-                  className={`py-2.5 px-2 text-xs text-center rounded-lg mb-1 transition-colors ${tempLocation.city === c ? 'bg-white dark:bg-white/20 shadow-sm font-bold text-primary' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/5'}`}
+                <div key={c.name}
+                  onClick={() => {
+                    const firstDist = c.children?.[0];
+                    setTempLocation({
+                      ...tempLocation,
+                      city: c.name,
+                      district: firstDist?.name || '',
+                      lat: firstDist?.lat,
+                      lng: firstDist?.lng
+                    });
+                  }}
+                  className={`py-2.5 px-2 text-xs text-center rounded-lg mb-1 transition-colors ${tempLocation.city === c.name ? 'bg-white dark:bg-white/20 shadow-sm font-bold text-primary' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/5'}`}
                 >
-                  {c}
+                  {c.name}
                 </div>
               ))}
             </div>
+
+            {/* District Column */}
             <div className="flex-1 bg-gray-50 dark:bg-black/20 rounded-xl overflow-y-auto hide-scrollbar p-2">
               {districtList.map(d => (
-                <div key={d}
-                  onClick={() => setTempLocation({ ...tempLocation, district: d })}
-                  className={`py-2.5 px-2 text-xs text-center rounded-lg mb-1 transition-colors ${tempLocation.district === d ? 'bg-white dark:bg-white/20 shadow-sm font-bold text-primary' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/5'}`}
+                <div key={d.name}
+                  onClick={() => setTempLocation({ ...tempLocation, district: d.name, lat: d.lat, lng: d.lng })}
+                  className={`py-2.5 px-2 text-xs text-center rounded-lg mb-1 transition-colors ${tempLocation.district === d.name ? 'bg-white dark:bg-white/20 shadow-sm font-bold text-primary' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/5'}`}
                 >
-                  {d}
+                  {d.name}
                 </div>
               ))}
             </div>
@@ -741,7 +792,7 @@ export const ConsoleScreen = React.memo<ConsoleScreenProps>(({ setFullScreen, ba
       {showRechargeModal && (
         <div className={`fixed inset-0 z-[100] flex items-end sm:items-center justify-center transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] ${isRechargeClosing ? 'bg-black/0 backdrop-blur-0' : 'bg-black/60 backdrop-blur-sm'}`}>
           <div
-            className={`bg-white dark:bg-[#1C1C1E] w-full sm:max-w-md rounded-t-[2.5rem] sm:rounded-3xl p-6 pb-24 sm:pb-6 shadow-2xl transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] relative z-[101] ${isRechargeClosing ? 'translate-y-full opacity-0 scale-95' : 'translate-y-0 opacity-100 scale-100'}`}
+            className={`bg-white dark:bg-[#1C1C1E] w-full sm:max-w-md rounded-t-[2.5rem] sm:rounded-3xl p-6 pb-10 sm:pb-6 shadow-2xl transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] relative z-[101] ${isRechargeClosing ? 'translate-y-full opacity-0 scale-95' : 'translate-y-0 opacity-100 scale-100'}`}
             style={{
               animation: !isRechargeClosing ? 'iosSlideUp 0.5s cubic-bezier(0.32, 0.72, 0, 1) forwards' : 'none',
               willChange: 'transform, opacity'
@@ -754,7 +805,7 @@ export const ConsoleScreen = React.memo<ConsoleScreenProps>(({ setFullScreen, ba
               }
             `}</style>
             <button onClick={handleCloseRechargeModal} className="absolute top-6 right-6 text-gray-400 hover:text-gray-600 transition-colors p-2 bg-gray-100 dark:bg-white/5 rounded-full"><X size={18} /></button>
-            <h2 className="text-xl font-bold mb-6 text-center text-gray-900 dark:text-white">
+            <h2 className="text-xl font-bold mb-4 text-center text-gray-900 dark:text-white">
               {paymentOrder ? '请按金额扫码' : '余额不足，请充值'}
             </h2>
 
@@ -814,30 +865,30 @@ export const ConsoleScreen = React.memo<ConsoleScreenProps>(({ setFullScreen, ba
                   .animate-breathe { animation: breathe 2s ease-in-out infinite; }
                 `}</style>
 
-                <div className="text-xs text-gray-400 mb-4 tracking-widest">请使用支付宝或微信扫码</div>
+                {/* REMOVED: <div className="text-xs text-gray-400 mb-1 tracking-widest">支持支付宝/微信</div> */}
 
-                <div className="text-5xl font-black text-red-500 mb-2 flex items-baseline">
-                  <span className="text-2xl mr-1">￥</span>
+                <div className="text-4xl font-black text-red-500 mb-1 flex items-baseline">
+                  <span className="text-xl mr-1">￥</span>
                   {paymentOrder.finalAmount.toFixed(2)}
                 </div>
 
-                <div className="flex items-center gap-1.5 mb-6 text-amber-500 font-mono text-sm bg-amber-500/10 px-3 py-1 rounded-full uppercase tracking-wider">
+                <div className="flex items-center gap-1.5 mb-3 text-amber-500 font-mono text-sm bg-amber-500/10 px-3 py-0.5 rounded-full uppercase tracking-wider">
                   <span>剩余支付时间</span>
                   <span className="font-bold">
                     {Math.floor(paymentCountdown / 60)}:{(paymentCountdown % 60).toString().padStart(2, '0')}
                   </span>
                 </div>
 
-                <div className="text-sm font-bold text-gray-800 dark:text-gray-200 mb-6 bg-red-50 dark:bg-red-900/20 px-6 py-1.5 rounded-full border border-red-200 dark:border-red-800/50">
+                <div className="text-sm font-bold text-gray-800 dark:text-gray-200 mb-3 bg-red-50 dark:bg-red-900/20 px-6 py-1.5 rounded-full border border-red-200 dark:border-red-800/50">
                   请按此金额支付，切勿修改
                 </div>
 
-                <div className="w-48 h-48 bg-white dark:bg-white rounded-2xl flex items-center justify-center border-2 border-gray-100 dark:border-white/20 relative overflow-hidden mb-4 shadow-inner">
+                <div className="w-36 h-36 bg-white dark:bg-white rounded-xl flex items-center justify-center border-2 border-gray-100 dark:border-white/20 relative overflow-hidden mb-2 shadow-inner">
                   <img src="/payment_qr.jpg" alt="收款二维码" className="w-full h-full object-contain" />
                 </div>
 
-                <div className="flex items-center justify-center gap-4 mb-8 w-full px-6">
-                  <img src="/pay_channels.png" alt="支付渠道" className="h-8 w-full object-contain opacity-90" />
+                <div className="flex items-center justify-center gap-4 mb-2 w-full px-6">
+                  <img src="/pay_channels.png" alt="支付渠道" className="h-5 w-full object-contain opacity-90" />
                 </div>
 
                 <div className="flex flex-col items-center gap-4 w-full px-4">
@@ -848,7 +899,7 @@ export const ConsoleScreen = React.memo<ConsoleScreenProps>(({ setFullScreen, ba
 
                   <button
                     onClick={handleCheckPaymentStatus}
-                    className="w-full py-4 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-2xl font-bold shadow-lg shadow-blue-500/30 active:scale-95 transition-all text-base mb-2"
+                    className="w-full py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl font-bold shadow-lg shadow-blue-500/30 active:scale-95 transition-all text-sm mb-1"
                   >
                     我已支付
                   </button>
@@ -862,9 +913,8 @@ export const ConsoleScreen = React.memo<ConsoleScreenProps>(({ setFullScreen, ba
                 </div>
               </div>
             )}
-            <p className="text-center text-[10px] text-gray-400 mt-6 leading-relaxed">
-              支付成功后系统将自动识别并增加算力<br />
-              如有疑问请联系客服
+            <p className="text-center text-[10px] text-gray-400 mt-2 leading-tight">
+              支付成功后系统自动识别<br />如有疑问请联系客服
             </p>
           </div>
         </div>
@@ -971,7 +1021,7 @@ export const ConsoleScreen = React.memo<ConsoleScreenProps>(({ setFullScreen, ba
             {/* 顶部: 详细命盘条 (可点击查看详情) */}
             {/* 顶部: 详细命盘条 (去除高亮样式) */}
             {/* 顶部: 详细命盘条 (去除高亮样式 - 透明背景，无阴影，无边框) */}
-            <div onClick={() => setShowDetailModal(true)} className="sticky top-[60px] z-20 bg-white/80 dark:bg-[#050507]/80 backdrop-blur-md rounded-2xl mb-6 overflow-hidden cursor-pointer active:scale-[0.99] transition-transform border border-gray-100 dark:border-white/5">
+            <div onClick={() => setShowDetailModal(true)} className="relative z-20 bg-white/80 dark:bg-[#050507]/80 backdrop-blur-md rounded-2xl mb-6 overflow-hidden cursor-pointer active:scale-[0.99] transition-transform border border-gray-100 dark:border-white/5">
               <div className="grid grid-cols-4 divide-x divide-transparent border-b border-transparent">
                 {[
                   { title: '年柱', gan: chart.year.gan, zhi: chart.year.zhi, ganShen: chart.year.ganShen, zhiShen: chart.year.zhiShen },
@@ -1052,12 +1102,8 @@ export const ConsoleScreen = React.memo<ConsoleScreenProps>(({ setFullScreen, ba
                     <>
                       {messages.map(msg => (
                         <div key={msg.id} className={`flex ${msg.isUser ? 'justify-end' : 'justify-start'} animate-in slide-in-from-bottom-2 duration-300`}>
-                          {!msg.isUser && (
-                            <div className="w-8 h-8 rounded-full bg-gradient-to-b from-[#E8D9C5] to-[#CABA9C] ring-2 ring-white/90 ring-inset shadow-[inset_0_0_8px_rgba(255,255,255,0.5)] flex items-center justify-center mr-2 mt-1 flex-shrink-0 backdrop-blur-sm">
-                              <QuantumIcon />
-                            </div>
-                          )}
-                          <div className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed shadow-sm ${msg.isUser ? 'bg-primary text-white rounded-br-none' : 'bg-white dark:bg-[#2C2C2E] text-gray-800 dark:text-gray-200 rounded-bl-none border border-gray-100 dark:border-white/5 markdown-body'}`}>
+                          {/* AI Avatar Removed for cleaner text view */}
+                          <div className={`w-full rounded-2xl px-4 py-3 text-sm leading-relaxed shadow-sm ${msg.isUser ? 'bg-primary text-white rounded-br-none max-w-[85%] ml-auto' : 'bg-transparent text-gray-800 dark:text-gray-200 rounded-bl-none border-none p-0 markdown-body'}`}>
                             {msg.isUser ? msg.text : (
                               <ReactMarkdown
                                 remarkPlugins={[remarkGfm]}

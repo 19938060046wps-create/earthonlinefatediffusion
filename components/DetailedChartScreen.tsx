@@ -133,7 +133,7 @@ export const DetailedChartScreen: React.FC<DetailedChartScreenProps> = ({ chart,
                             <div className="h-[60px] flex items-center">藏干</div>
                             <div className="h-4 mt-2 flex items-center">星运</div>
                             <div className="h-4 mt-1 flex items-center">纳音</div>
-                            <div className="h-4 mt-1 flex items-center">神煞</div>
+                            <div className="h-12 mt-1 flex items-center justify-center">神煞</div>
                         </div>
 
                         {/* Pillars */}
@@ -176,8 +176,16 @@ export const DetailedChartScreen: React.FC<DetailedChartScreenProps> = ({ chart,
                                     {/* Footer Info */}
                                     <div className="h-4 mt-2 text-[10px] text-gray-600 dark:text-gray-300 flex items-center">{pillar.xingYun}</div>
                                     <div className="h-4 mt-1 text-[9px] text-gray-500 flex items-center scale-90 whitespace-nowrap">{pillar.naYin}</div>
-                                    <div className="h-4 mt-1 text-[9px] text-amber-600 dark:text-amber-500/80 flex items-center scale-90 whitespace-nowrap">
-                                        {i === 0 ? '太极' : i === 1 ? '文昌' : i === 2 ? '天乙' : '华盖'}
+                                    <div className="h-12 mt-1 flex flex-col items-center justify-center gap-0.5">
+                                        {pillar.shenSha.length > 0 ? (
+                                            pillar.shenSha.map((star, idx) => (
+                                                <span key={idx} className="text-[9px] text-amber-600 dark:text-amber-500/90 leading-none scale-90 whitespace-nowrap">
+                                                    {star}
+                                                </span>
+                                            ))
+                                        ) : (
+                                            <span className="text-[9px] text-gray-300 scale-90">-</span>
+                                        )}
                                     </div>
                                 </div>
                             );

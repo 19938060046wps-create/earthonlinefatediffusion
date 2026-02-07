@@ -73,7 +73,7 @@ async def send_code(request: SendCodeRequest):
     if not validate_phone(request.phone):
         raise HTTPException(status_code=400, detail="手机号格式错误")
     
-    code = send_verification_code(request.phone)
+    code = await send_verification_code(request.phone)
     
     # 开发环境返回验证码便于测试
     return {
