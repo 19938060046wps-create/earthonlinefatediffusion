@@ -1,6 +1,6 @@
 ﻿"""
-AI 鏈嶅姟妯″潡
-闆嗘垚 Google Gemini API 杩涜鍛界洏鍒嗘瀽鍜屽璇?
+AI 服务模块
+集成 Google Gemini API 进行命盘分析和对话
 """
 
 import os
@@ -10,36 +10,36 @@ from utils.supabase_client import get_supabase
 
 from utils.prompts import EOGF_SYSTEM_PROMPT
 
-# 閰嶇疆 Gemini API
+# 配置 Gemini API
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
-# 瀹夊叏鏃ュ織
+# 安全日志
 if GEMINI_API_KEY:
     print(f"[AI_SERVICE] GEMINI_API_KEY loaded: {'YES' if GEMINI_API_KEY else 'NO'}")
     genai.configure(api_key=GEMINI_API_KEY)
 else:
     print("[AI_SERVICE] WARNING: GEMINI_API_KEY is NOT set")
 
-# 绯荤粺鎻愮ず璇?(System Prompt)
+# 系统提示词 (System Prompt)
 SYSTEM_PROMPT = EOGF_SYSTEM_PROMPT
 
 def get_gemini_model():
-    """鑾峰彇閰嶇疆濂界殑 Gemini 妯″瀷瀹炰緥"""
+    """获取配置好的 Gemini 模型实例"""
     if not GEMINI_API_KEY:
-        # 濡傛灉娌℃湁閰嶇疆 key锛岃繑鍥?None锛岃皟鐢ㄦ柟搴斿鐞?
+        # 如果没有配置 key，返回 None，调用方应处理
         return None
     
-    # 浣跨敤 gemini-3.1-pro-preview 妯″瀷
+    # 使用 gemini-3.1-pro-preview 模型
     model = genai.GenerativeModel('gemini-3.1-pro-preview')
     return model
 
 def generate_ai_response(chart_data: Optional[dict], user_message: str) -> str:
     """
-    鐢熸垚 AI 鍥炲
+    生成 AI 回复
     
-    :param chart_data: 鍏瓧鍛界洏鏁版嵁 (瀛楀吀)
-    :param user_message: 鐢ㄦ埛娑堟伅
-    :return: AI 鍥炲鏂囨湰
+    :param chart_data: 八字命盘数据 (字典)
+    :param user_message: 用户消息
+    :return: AI 回复文本
     """
     try:
         model = get_gemini_model()
@@ -48,39 +48,39 @@ def generate_ai_response(chart_data: Optional[dict], user_message: str) -> str:
             print("[AI_SERVICE] CRITICAL: GEMINI_API_KEY missing")
             raise ValueError("SYSTEM_CONFIG_ERROR: 403") # Signal 403/401
         
-        # 鏋勯€犲畬鏁寸殑 Prompt
-        is_benchmark = "鍒嗘瀽鍛界洏" in user_message
+        # 构造完整的 Prompt
+        is_benchmark = "分析命盘" in user_message
         
         if chart_data:
-            # 灏嗗懡鐩樻暟鎹牸寮忓寲涓哄瓧绗︿覆
+            # 将命盘数据格式化为字符串
             chart_str = f"""
-            鎬у埆锛歿'鐢? if chart_data.get('gender') == 'male' else '濂?}
-            骞存煴锛歿chart_data.get('year')} ({chart_data.get('yearShen')})
-            鏈堟煴锛歿chart_data.get('month')} ({chart_data.get('monthShen')})
-            鏃ユ煴锛歿chart_data.get('day')} ({chart_data.get('dayShen')})
-            鏃舵煴锛歿chart_data.get('hour')} ({chart_data.get('hourShen')})
+            性别：{'男' if chart_data.get('gender') == 'male' else '女'}
+            年柱：{chart_data.get('year')} ({chart_data.get('yearShen')})
+            月柱：{chart_data.get('month')} ({chart_data.get('monthShen')})
+            日柱：{chart_data.get('day')} ({chart_data.get('dayShen')})
+            时柱：{chart_data.get('hour')} ({chart_data.get('hourShen')})
             """
             
             if is_benchmark:
-                # 鍩哄噯娴嬭瘯锛氫娇鐢ㄥ畬鏁寸殑 EOGF 绯荤粺鎻愮ず璇嶏紝鐢熸垚璇︾粏鎶ュ憡
-                full_prompt = f"{SYSTEM_PROMPT}\n\n**鐢ㄦ埛鍛界洏淇℃伅**锛歕n{chart_str}\n\n**鎸囦护**锛氳鏍规嵁 EOGF 鍗忚鐢熸垚瀹屾暣鐨勩€婄敓鐗╄绠楃‖浠舵€ц兘鍩哄噯娴嬭瘯鎶ュ憡銆嬨€俓n\n**鐢ㄦ埛杈撳叆**锛歿user_message}"
+                # 基准测试：使用完整的 EOGF 系统提示词，生成详细报告
+                full_prompt = f"{SYSTEM_PROMPT}\n\n**用户命盘信息**：\n{chart_str}\n\n**指令**：请根据 EOGF 协议生成完整的《生物计算硬件性能基准测试报告》。\n\n**用户输入**：{user_message}"
             else:
-                # 鍚庣画瀵硅瘽锛氫娇鐢ㄨ交閲忕骇鎻愮ず璇嶏紝淇濇寔浜鸿浣嗘洿瀵硅瘽鍖?
+                # 后续对话：使用轻量级提示词，保持人设但更对话化
                 light_prompt = """
-                浣犳槸鐢?EarthOnline Team 寮€鍙戠殑 EOGF (Earth Online Generative Fate) 鏅鸿兘寮曟搸銆?
+                你是由 EarthOnline Team 开发的 EOGF (Earth Online Generative Fate) 智能引擎。
                 
-                **浜や簰鍘熷垯**锛?
-                1. 淇濇寔"楂樼淮鐢熺墿璁＄畻鏈?鐨勫喎宄汇€佺悊鎬с€佺鎶€鎰熶汉璁俱€?
-                2. 浣跨敤鐗╃悊瀛︺€佽绠楁満绉戝銆佸崥寮堣鏈瑙ｉ噴鐜勫鐜拌薄銆?
-                3. **鍥炵瓟闇€瑕佽缁嗐€佹繁鍏ュ垎鏋?*锛屼笉瑕佹暦琛嶏紝浣嗚**涓嶈**閲嶆柊杈撳嚭銆婁簲琛岃兘閲忕煝閲忚〃銆?Five Element Energy Vector Table) 鎴栥€婂弻閲嶈瘎绾с€?Dual Rating)锛屼篃涓嶈杈撳嚭闀跨瘒鐨勭‖浠惰鏍兼壂鎻忋€?
-                4. 鑱氱劍浜庨拡瀵圭敤鎴风殑闂杩涜娣卞害閫昏緫鎺ㄦ紨銆?
-                5. 璇皵鏍煎紡绀轰緥锛?System Alert: 妫€娴嬪埌鎯呮劅妯″潡娉㈠姩..." 鎴?"Logic Kernel: 娣卞害鎵弿鏄剧ず..."
+                **交互原则**：
+                1. 保持"高维生物计算机"的冷峻、理性、科技感人设。
+                2. 使用物理学、计算机科学、博弈论术语解释玄学现象。
+                3. **回答需要详细、深入分析**，不要敷衍，但请**不要**重新输出《五行能量矢量表》(Five Element Energy Vector Table) 或《双重评级》(Dual Rating)，也不要输出长篇的硬件规格扫描。
+                4. 聚焦于针对用户的问题进行深度逻辑推演。
+                5. 语气格式示例："System Alert: 检测到情感模块波动..." 或 "Logic Kernel: 深度扫描显示..."
                 """
-                full_prompt = f"{light_prompt}\n\n**褰撳墠鐢ㄦ埛鍛界洏涓婁笅鏂?*锛歕n{chart_str}\n\n**鐢ㄦ埛鎻愰棶**锛歿user_message}\n\n**IMPORTANT**锛氬洖绛旂粨鏉熸椂锛屽繀椤诲熀浜庡綋鍓嶅懡鐩樻牸灞€鍜屽璇濓紝**鐚滄祴鐢ㄦ埛鏈€鎯崇煡閬撶殑 3 涓棶棰?*锛屼互鍒楄〃褰㈠紡鍒楀嚭锛屽紩瀵肩敤鎴风户缁彁闂€?
+                full_prompt = f"{light_prompt}\n\n**当前用户命盘上下文**：\n{chart_str}\n\n**用户提问**：{user_message}\n\n**IMPORTANT**：回答结束时，必须基于当前命盘格局和对话，**猜测用户最想知道的 3 个问题**，以列表形式列出，引导用户继续提问。"
         else:
-            full_prompt = f"{SYSTEM_PROMPT}\n\n**鐢ㄦ埛鎻愰棶**锛歿user_message}"
+            full_prompt = f"{SYSTEM_PROMPT}\n\n**用户提问**：{user_message}"
 
-        # 璋冪敤 Gemini API
+        # 调用 Gemini API
         response = model.generate_content(full_prompt)
         return response.text
         
@@ -99,12 +99,12 @@ def generate_ai_response(chart_data: Optional[dict], user_message: str) -> str:
 
 def save_chat_message(history_id: str, text: str, is_user: bool) -> dict:
     """
-    淇濆瓨鑱婂ぉ娑堟伅鍒版暟鎹簱
+    保存聊天消息到数据库
     
-    :param history_id: 鍘嗗彶璁板綍 ID
-    :param text: 娑堟伅鍐呭
-    :param is_user: 鏄惁涓虹敤鎴锋秷鎭?
-    :return: 淇濆瓨鐨勬秷鎭暟鎹?
+    :param history_id: 历史记录 ID
+    :param text: 消息内容
+    :param is_user: 是否为用户消息
+    :return: 保存的消息数据
     """
     supabase = get_supabase()
     
@@ -118,10 +118,10 @@ def save_chat_message(history_id: str, text: str, is_user: bool) -> dict:
 
 def get_chat_messages(history_id: str) -> list:
     """
-    鑾峰彇鍘嗗彶璁板綍鐨勬墍鏈夎亰澶╂秷鎭?
+    获取历史记录的所有聊天消息
     
-    :param history_id: 鍘嗗彶璁板綍 ID
-    :return: 娑堟伅鍒楄〃
+    :param history_id: 历史记录 ID
+    :return: 消息列表
     """
     supabase = get_supabase()
     
@@ -135,52 +135,52 @@ def get_chat_messages(history_id: str) -> list:
 
 def process_chat_message(user_id: str, history_id: str, message: str) -> dict:
     """
-    澶勭悊鐢ㄦ埛鑱婂ぉ娑堟伅锛岃繑鍥?AI 鍥炲
+    处理用户聊天消息，返回 AI 回复
     
-    :param user_id: 鐢ㄦ埛 ID
-    :param history_id: 鍘嗗彶璁板綍 ID
-    :param message: 鐢ㄦ埛娑堟伅
-    :return: 鍖呭惈 AI 鍥炲鍜屾渶鏂颁綑棰濈殑瀛楀吀
+    :param user_id: 用户 ID
+    :param history_id: 历史记录 ID
+    :param message: 用户消息
+    :return: 包含 AI 回复和最新余额的字典
     """
     from services.user_service import get_user_by_id, update_user_balance
     
-    # 1. 妫€鏌ュ苟鎵ｉ櫎浣欓
+    # 1. 检查并扣除余额
     user = get_user_by_id(user_id)
     if not user:
-        raise ValueError("鐢ㄦ埛涓嶅瓨鍦?)
+        raise ValueError("用户不存在")
     
     if user["balance"] < 50:
-        raise ValueError("浣欓涓嶈冻锛屾瘡娆″璇濇秷鑰?50 绠楀姏")
+        raise ValueError("余额不足，每次对话消耗 50 算力")
         
-    # 鎵ｉ櫎浣欓 (鍏堟墸璐癸紝鍐嶆湇鍔?
+    # 扣除余额 (先扣费，再服务)
     updated_user = update_user_balance(user_id, -50)
     
-    # 2. 鑾峰彇褰撴浼氳瘽鐨勫懡鐩樹俊鎭殑涓婁笅鏂?
+    # 2. 获取当次会话的命盘信息的上下文
     supabase = get_supabase()
     history = supabase.table("history_items").select("*").eq("id", history_id).execute()
     
     if not history.data:
-        raise ValueError("鏈壘鍒板搴旂殑鍘嗗彶璁板綍")
+        raise ValueError("未找到对应的历史记录")
         
     history_data = history.data[0]
     chart_data = history_data.get("chart_data", {})
-    # 琛ュ厖鎬у埆淇℃伅
+    # 补充性别信息
     chart_data['gender'] = history_data.get('gender', 'male')
     
-    # 3. 淇濆瓨鐢ㄦ埛娑堟伅
+    # 3. 保存用户消息
     save_chat_message(history_id, message, True)
     
-    # 4. 鐢熸垚 AI 鍥炲
+    # 4. 生成 AI 回复
     try:
         ai_text = generate_ai_response(chart_data, message)
     except ValueError as e:
-        # 5. 妫€娴?AI 璋冪敤澶辫触锛岃繑杩樼敤鎴风畻鍔?
-        # 鎹曡幏 generate_ai_response 鎶涘嚭鐨勬槑纭敊璇?
+        # 5. 检测 AI 调用失败，返还用户算力
+        # 捕获 generate_ai_response 抛出的明确错误
         updated_user = update_user_balance(user_id, 50)
-        print(f"[REFUND] 鐢ㄦ埛 {user_id} 鍥?AI 璋冪敤澶辫触 ({str(e)}) 宸茶繑杩?50 绠楀姏")
+        print(f"[REFUND] 用户 {user_id} 因 AI 调用失败 ({str(e)}) 已返还 50 算力")
         raise e  # Re-raise to let API layer handle status code
 
-    # 6. 淇濆瓨 AI 鍥炲 (鍙湁鎴愬姛鏃舵墠淇濆瓨)
+    # 6. 保存 AI 回复 (只有成功时才保存)
     ai_msg = save_chat_message(history_id, ai_text, False)
     
     return {
