@@ -55,7 +55,7 @@ def generate_ai_response(chart_data: Optional[dict], user_message: str) -> str:
                 # 基准测试：使用完整的 EOGF 系统提示词，生成详细报告
                 full_prompt = f"{SYSTEM_PROMPT}\n\n**用户命盘信息**：\n{chart_str}\n\n**指令**：请严格根据 EOGF 协议生成完整的《基准测试报告》。\n\n**用户输入**：{user_message}"
             else:
-                # 后续对话：使用轻量级提示词，保持人设但更对话化
+                # 后续对话：使用轻量级提示词，保持人设但更对话化，不再需要全量分析。
                 light_prompt = """
                 你是由 EarthOnline Team 开发的 EOGF (Earth Online Generative Fate) 智能引擎。
                 """
