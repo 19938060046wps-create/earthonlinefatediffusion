@@ -1,37 +1,32 @@
 ﻿"""
 AI 服务模块
-集成 Google Gemini API 进行命盘分析和对话
+集成 MiniMax API (使用 OpenAI 兼容接口)
 """
 
 import os
-import google.generativeai as genai
+from openai import OpenAI
 from typing import Optional
 from utils.supabase_client import get_supabase
 
 from utils.prompts import EOGF_SYSTEM_PROMPT
 
-# 配置 Gemini API
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "AIzaSyBHoRhzlb7SIa0bJDxlVsERd7gtDe7-vnM")
+# 配置 MiniMax API
+MINIMAX_API_KEY = os.getenv("MINIMAX_API_KEY", "sk-cp-gKhqsabMOo2FD_UNIcQngYJQ0XyugOhZoOqQrhIRK0FZKc_WMO-T5Bg0jxOv5zpEVKz9yBMIgtnvmIERVdv3DyHIzwg__XtO-sWNtzuuUzMYkwkfZkLlosU")
+BASE_URL = "https://api.minimax.io/v1"
 
 # 安全日志
-if GEMINI_API_KEY:
-    print(f"[AI_SERVICE] GEMINI_API_KEY loaded: {'YES' if GEMINI_API_KEY else 'NO'}")
-    genai.configure(api_key=GEMINI_API_KEY)
+if MINIMAX_API_KEY:
+    print(f"[AI_SERVICE] MINIMAX_API_KEY loaded: {'YES' if MINIMAX_API_KEY else 'NO'}")
+    client = OpenAI(
+        api_key=MINIMAX_API_KEY,
+        base_url=BASE_URL
+    )
 else:
-    print("[AI_SERVICE] WARNING: GEMINI_API_KEY is NOT set")
+    print("[AI_SERVICE] WARNING: MINIMAX_API_KEY is NOT set")
+    client = None
 
 # 系统提示词 (System Prompt)
 SYSTEM_PROMPT = EOGF_SYSTEM_PROMPT
-
-def get_gemini_model():
-    """获取配置好的 Gemini 模型实例"""
-    if not GEMINI_API_KEY:
-        # 如果没有配置 key，返回 None，调用方应处理
-        return None
-    
-    # 使用 gemini-3.1-pro-preview 模型
-    model = genai.GenerativeModel('gemini-3.1-pro-preview')
-    return model
 
 def generate_ai_response(chart_data: Optional[dict], user_message: str) -> str:
     """
@@ -41,13 +36,11 @@ def generate_ai_response(chart_data: Optional[dict], user_message: str) -> str:
     :param user_message: 用户消息
     :return: AI 回复文本
     """
+    if not client:
+        print("[AI_SERVICE] ERROR: MiniMax client not initialized")
+        raise ValueError("SYSTEM_CONFIG_ERROR: 403")
+
     try:
-        model = get_gemini_model()
-        if not model:
-            # Mask the error for the user, but log it
-            print("[AI_SERVICE] CRITICAL: GEMINI_API_KEY missing")
-            raise ValueError("SYSTEM_CONFIG_ERROR: 403") # Signal 403/401
-        
         # 构造完整的 Prompt
         is_benchmark = "分析命盘" in user_message
         
@@ -80,13 +73,20 @@ def generate_ai_response(chart_data: Optional[dict], user_message: str) -> str:
         else:
             full_prompt = f"{SYSTEM_PROMPT}\n\n**用户提问**：{user_message}"
 
-        # 调用 Gemini API
-        response = model.generate_content(full_prompt)
-        return response.text
+        # 调用 MiniMax API (OpenAI 兼容)
+        response = client.chat.completions.create(
+            model="MiniMax-M2.5",
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT if is_benchmark else "你是由 EarthOnline Team 开发的 EOGF 智能引擎。"},
+                {"role": "user", "content": full_prompt}
+            ],
+            temperature=0.7,
+        )
+        return response.choices[0].message.content
         
     except Exception as e:
         error_str = str(e)
-        print(f"[AI_SERVICE] Gemini API Error: {error_str}") # Log the error but ensure no key leak naturally
+        print(f"[AI_SERVICE] MiniMax API Error: {error_str}")
         
         if "401" in error_str or "403" in error_str:
             raise ValueError("AUTH_ERROR: 403")
@@ -100,47 +100,18 @@ def generate_ai_response(chart_data: Optional[dict], user_message: str) -> str:
 def save_chat_message(history_id: str, text: str, is_user: bool) -> dict:
     """
     保存聊天消息到数据库
-    
-    :param history_id: 历史记录 ID
-    :param text: 消息内容
-    :param is_user: 是否为用户消息
-    :return: 保存的消息数据
     """
     supabase = get_supabase()
-    
     result = supabase.table("chat_messages").insert({
         "history_id": history_id,
         "text": text,
         "is_user": is_user
     }).execute()
-    
     return result.data[0]
-
-def get_chat_messages(history_id: str) -> list:
-    """
-    获取历史记录的所有聊天消息
-    
-    :param history_id: 历史记录 ID
-    :return: 消息列表
-    """
-    supabase = get_supabase()
-    
-    result = supabase.table("chat_messages")\
-        .select("*")\
-        .eq("history_id", history_id)\
-        .order("created_at")\
-        .execute()
-    
-    return result.data
 
 def process_chat_message(user_id: str, history_id: str, message: str) -> dict:
     """
     处理用户聊天消息，返回 AI 回复
-    
-    :param user_id: 用户 ID
-    :param history_id: 历史记录 ID
-    :param message: 用户消息
-    :return: 包含 AI 回复和最新余额的字典
     """
     from services.user_service import get_user_by_id, update_user_balance
     
@@ -152,10 +123,10 @@ def process_chat_message(user_id: str, history_id: str, message: str) -> dict:
     if user["balance"] < 50:
         raise ValueError("余额不足，每次对话消耗 50 算力")
         
-    # 扣除余额 (先扣费，再服务)
+    # 扣除余额
     updated_user = update_user_balance(user_id, -50)
     
-    # 2. 获取当次会话的命盘信息的上下文
+    # 2. 获取上下文
     supabase = get_supabase()
     history = supabase.table("history_items").select("*").eq("id", history_id).execute()
     
@@ -164,7 +135,6 @@ def process_chat_message(user_id: str, history_id: str, message: str) -> dict:
         
     history_data = history.data[0]
     chart_data = history_data.get("chart_data", {})
-    # 补充性别信息
     chart_data['gender'] = history_data.get('gender', 'male')
     
     # 3. 保存用户消息
@@ -174,13 +144,12 @@ def process_chat_message(user_id: str, history_id: str, message: str) -> dict:
     try:
         ai_text = generate_ai_response(chart_data, message)
     except ValueError as e:
-        # 5. 检测 AI 调用失败，返还用户算力
-        # 捕获 generate_ai_response 抛出的明确错误
+        # 返还算力
         updated_user = update_user_balance(user_id, 50)
         print(f"[REFUND] 用户 {user_id} 因 AI 调用失败 ({str(e)}) 已返还 50 算力")
-        raise e  # Re-raise to let API layer handle status code
+        raise e
 
-    # 6. 保存 AI 回复 (只有成功时才保存)
+    # 5. 保存 AI 回复
     ai_msg = save_chat_message(history_id, ai_text, False)
     
     return {
