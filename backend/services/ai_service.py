@@ -4,34 +4,25 @@ AI 服务模块
 """
 
 import os
-import google.generativeai as genai
+import httpx
 from typing import Optional
 from utils.supabase_client import get_supabase
 
 from utils.prompts import EOGF_SYSTEM_PROMPT
 
-# 配置 Gemini API
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+# 配置 Claude API (优先从环境变量读取，如果不存在则使用默认值)
+CLAUDE_API_KEY = os.getenv("CLAUDE_API_KEY", "sk-qblzejJBaTYE3M5I6sJX2Qv5dDI48iGGAvywOlALbC4lWT0X")
+CLAUDE_BASE_URL = os.getenv("CLAUDE_BASE_URL", "https://api.vectorengine.ai/v1")
+MODEL_NAME = "claude-opus-4-6-thinking"
 
 # 安全日志
-if GEMINI_API_KEY:
-    print(f"[AI_SERVICE] GEMINI_API_KEY loaded: {'YES' if GEMINI_API_KEY else 'NO'}")
-    genai.configure(api_key=GEMINI_API_KEY)
+if CLAUDE_API_KEY:
+    print(f"[AI_SERVICE] CLAUDE_API_KEY loaded: {'YES' if CLAUDE_API_KEY else 'NO'}")
 else:
-    print("[AI_SERVICE] WARNING: GEMINI_API_KEY is NOT set")
+    print("[AI_SERVICE] WARNING: CLAUDE_API_KEY is NOT set")
 
 # 系统提示词 (System Prompt)
 SYSTEM_PROMPT = EOGF_SYSTEM_PROMPT
-
-def get_gemini_model():
-    """获取配置好的 Gemini 模型实例"""
-    if not GEMINI_API_KEY:
-        # 如果没有配置 key，返回 None，调用方应处理
-        return None
-    
-    # 使用 gemini-3-flash-preview 模型
-    model = genai.GenerativeModel('gemini-3-flash-preview')
-    return model
 
 def generate_ai_response(chart_data: Optional[dict], user_message: str) -> str:
     """
@@ -42,10 +33,9 @@ def generate_ai_response(chart_data: Optional[dict], user_message: str) -> str:
     :return: AI 回复文本
     """
     try:
-        model = get_gemini_model()
-        if not model:
+        if not CLAUDE_API_KEY:
             # Mask the error for the user, but log it
-            print("[AI_SERVICE] CRITICAL: GEMINI_API_KEY missing")
+            print("[AI_SERVICE] CRITICAL: CLAUDE_API_KEY missing")
             raise ValueError("SYSTEM_CONFIG_ERROR: 403") # Signal 403/401
         
         # 构造完整的 Prompt
@@ -63,39 +53,62 @@ def generate_ai_response(chart_data: Optional[dict], user_message: str) -> str:
             
             if is_benchmark:
                 # 基准测试：使用完整的 EOGF 系统提示词，生成详细报告
-                full_prompt = f"{SYSTEM_PROMPT}\n\n**用户命盘信息**：\n{chart_str}\n\n**指令**：请根据 EOGF 协议生成完整的《生物计算硬件性能基准测试报告》。\n\n**用户输入**：{user_message}"
+                full_prompt = f"{SYSTEM_PROMPT}\n\n**用户命盘信息**：\n{chart_str}\n\n**指令**：请严格根据 EOGF 协议生成完整的《基准测试报告》。\n\n**用户输入**：{user_message}"
             else:
                 # 后续对话：使用轻量级提示词，保持人设但更对话化
                 light_prompt = """
                 你是由 EarthOnline Team 开发的 EOGF (Earth Online Generative Fate) 智能引擎。
-                
-                **交互原则**：
-                1. 保持"高维生物计算机"的冷峻、理性、科技感人设。
-                2. 使用物理学、计算机科学、博弈论术语解释玄学现象。
-                3. **回答需要详细、深入分析**，不要敷衍，但请**不要**重新输出《五行能量矢量表》(Five Element Energy Vector Table) 或《双重评级》(Dual Rating)，也不要输出长篇的硬件规格扫描。
-                4. 聚焦于针对用户的问题进行深度逻辑推演。
-                5. 语气格式示例："System Alert: 检测到情感模块波动..." 或 "Logic Kernel: 深度扫描显示..."
                 """
-                full_prompt = f"{light_prompt}\n\n**当前用户命盘上下文**：\n{chart_str}\n\n**用户提问**：{user_message}\n\n**IMPORTANT**：回答结束时，必须基于当前命盘格局和对话，**猜测用户最想知道的 3 个问题**，以列表形式列出，引导用户继续提问。"
+                full_prompt = f"{light_prompt}\n\n**当前用户命盘上下文**：\n{chart_str}\n\n**用户提问**：{user_message}\n\n**IMPORTANT**：回答结束时，需要引导用户继续提问。"
         else:
             full_prompt = f"{SYSTEM_PROMPT}\n\n**用户提问**：{user_message}"
 
-        # 调用 Gemini API
-        response = model.generate_content(full_prompt)
-        return response.text
+        # 调用 Claude 代理 API
+        headers = {
+            "Authorization": f"Bearer {CLAUDE_API_KEY}",
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "model": MODEL_NAME,
+            "messages": [{"role": "user", "content": full_prompt}]
+        }
         
-    except Exception as e:
-        error_str = str(e)
-        print(f"[AI_SERVICE] Gemini API Error: {error_str}") # Log the error but ensure no key leak naturally
-        
-        if "401" in error_str or "403" in error_str:
+        # Thinking 模型需要极长时间，设置超长的超时时间 (300秒)
+        with httpx.Client(timeout=300.0) as client:
+            response = client.post(
+                f"{CLAUDE_BASE_URL.rstrip('/')}/chat/completions",
+                headers=headers,
+                json=payload
+            )
+            response.raise_for_status()
+            result = response.json()
+            
+            if "choices" in result and len(result["choices"]) > 0:
+                content = result["choices"][0].get("message", {}).get("content", "")
+                if content:
+                    return content
+                raise ValueError("Empty response content")
+            else:
+                raise ValueError(f"Invalid API response format: {result}")
+                
+    except httpx.HTTPStatusError as e:
+        status_code = e.response.status_code
+        error_text = e.response.text
+        print(f"[AI_SERVICE] API HTTP Error {status_code}: {error_text}")
+        if status_code in (401, 403):
             raise ValueError("AUTH_ERROR: 403")
-        elif "429" in error_str:
+        elif status_code == 429:
             raise ValueError("RATE_LIMIT: 429")
-        elif "504" in error_str or "timed out" in error_str.lower():
+        elif status_code in (502, 503, 504):
             raise ValueError("TIMEOUT: 504")
         else:
-            raise ValueError(f"INTERNAL_ERROR: 500")
+            raise ValueError("INTERNAL_ERROR: 500")
+    except httpx.RequestError as e:
+        print(f"[AI_SERVICE] Network Request Error: {str(e)}")
+        raise ValueError("TIMEOUT: 504")
+    except Exception as e:
+        print(f"[AI_SERVICE] Unexpected Error: {str(e)}")
+        raise ValueError("INTERNAL_ERROR: 500")
 
 def save_chat_message(history_id: str, text: str, is_user: bool) -> dict:
     """

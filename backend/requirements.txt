@@ -6,7 +6,7 @@ httpx
 python-jose[cryptography]
 passlib[bcrypt]
 bcrypt
-google-generativeai
 fastapi-mail>=1.4.1
 pydantic[email]
 pydantic-settings>=2.0.0
+python-multipart
