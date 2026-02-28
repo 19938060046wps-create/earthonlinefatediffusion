@@ -11,7 +11,7 @@ from utils.supabase_client import get_supabase
 from utils.prompts import EOGF_SYSTEM_PROMPT
 
 # 配置 Gemini API
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "AIzaSyBHoRhzlb7SIa0bJDxlVsERd7gtDe7-vnM")
 
 # 安全日志
 if GEMINI_API_KEY:
