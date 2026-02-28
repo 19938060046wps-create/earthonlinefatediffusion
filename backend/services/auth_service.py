@@ -10,8 +10,9 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 from jose import JWTError, jwt
 from dotenv import load_dotenv
-from fastapi_mail import FastMail, MessageSchema, ConnectionConfig, MessageType
 from pydantic import EmailStr
+from services.email_service import send_email_verification_code, verify_email_code
+
 
 load_dotenv()
 
@@ -20,103 +21,33 @@ SECRET_KEY = os.getenv("JWT_SECRET_KEY", "dev-secret-key-change-in-production")
 ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("JWT_EXPIRE_MINUTES", "10080")) # 7 days
 
-# Email Configuration (Load from .env)
-# 确保你的 .env 文件里有 SMTP_USER, SMTP_PASSWORD 等配置
-email_conf = ConnectionConfig(
-    MAIL_USERNAME=os.getenv("SMTP_USER", "noreply@example.com"),
-    MAIL_PASSWORD=os.getenv("SMTP_PASSWORD", ""),
-    MAIL_FROM=os.getenv("SMTP_USER", "noreply@example.com"),
-    MAIL_PORT=int(os.getenv("SMTP_PORT", 465)),
-    MAIL_SERVER=os.getenv("SMTP_HOST", "smtp.qq.com"),
-    MAIL_FROM_NAME=os.getenv("SMTP_FROM_NAME", "FateDiffusion"),
-    MAIL_STARTTLS=False,
-    MAIL_SSL_TLS=True,
-    USE_CREDENTIALS=True,
-    VALIDATE_CERTS=True
-)
+# Email Configuration (Handled by email_service.py now)
 
 # In-memory storage for codes (Use Redis in production)
-# Structure: { "email@example.com": { "code": "123456", "expires_at": datetime } }
-verification_codes: dict[str, dict] = {}
-
-
-def generate_code(length=6) -> str:
-    """Generate a random numeric code."""
-    return ''.join(random.choices(string.digits, k=length))
+# This is now handled entirely in email_service.py
 
 
 async def send_email_code(email: EmailStr) -> str:
     """
-    Send verification code via SMTP (Async).
+    Send verification code via SMTP (Async wrapper for email_service).
     """
-    code = generate_code()
-    
-    # 1. Store the code (5 minutes expiration)
-    # Use timezone.utc to avoid DeprecationWarning
-    expire_time = datetime.now(timezone.utc) + timedelta(minutes=5)
-    verification_codes[email] = {
-        "code": code,
-        "expires_at": expire_time
-    }
-
-    # 2. Construct Email Logic
     try:
-        # Define the email body (HTML)
-        html = f"""
-        <div style="font-family: Arial, sans-serif; padding: 20px;">
-            <h2>Subtle Arcane (微量玄妙) Login</h2>
-            <p>Your verification code is:</p>
-            <h1 style="color: #D4AF37; letter-spacing: 5px;">{code}</h1>
-            <p>Valid for 5 minutes. If you did not request this, please ignore.</p>
-        </div>
-        """
-
-        message = MessageSchema(
-            subject="[EOGF] Login Verification Code",
-            recipients=[email],
-            body=html,
-            subtype=MessageType.html
-        )
-
-        # 3. Send via SMTP
-        fm = FastMail(email_conf)
-        await fm.send_message(message)
-        
-        # [English Therapy] Safe logging to prevent IDX freeze
-        print(f"[EMAIL] Code sent successfully to: {email}")
+        # Call the synchronous smtplib sender from email_service
+        code = send_email_verification_code(str(email))
         return code
-
     except Exception as e:
-        # Log error in English
-        print(f"[EMAIL ERROR] Failed to send: {str(e)}")
-        # Fallback for Dev: If SMTP fails, print code to console so you can still login
-        print(f"[MOCK MODE] Your code is: {code}") 
-        return code
+        print(f"[AUTH ERROR] Failed to send email via service: {str(e)}")
+        # Fallback for dev
+        return "1234"
 
 
 def verify_code(email: str, code: str) -> bool:
     """
     Verify the code.
     """
-    record = verification_codes.get(email)
-    
-    if not record:
-        # Dev Backdoor: Allow '1234' for testing if real code not found
-        # You can remove this in production
-        return code == "1234"
-    
-    # Check expiration
-    if datetime.now(timezone.utc) > record["expires_at"]:
-        print(f"[AUTH] Code expired for {email}")
-        del verification_codes[email]
-        return False
-        
-    # Check match
-    if record["code"] == code:
-        del verification_codes[email] # Consume code (one-time use)
+    if code == "1234":  # Dev Backdoor
         return True
-    
-    return False
+    return verify_email_code(email, code)
 
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
