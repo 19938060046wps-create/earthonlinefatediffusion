@@ -1,6 +1,7 @@
 openai
 fastapi
 uvicorn
+python-multipart
 starlette
 python-dotenv
 httpx

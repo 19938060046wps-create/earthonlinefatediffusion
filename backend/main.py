@@ -4,6 +4,7 @@ FateDiffusion 后端服务入口
 """
 
 import os
+import sys
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
@@ -11,6 +12,12 @@ from dotenv import load_dotenv
 # 加载环境变量
 # 加载环境变量
 # 显式指定 backend/.env 路径，防止在根目录运行 python backend/main.py 时找不到配置
+
+# 强制优先使用 venv 中的库，解决潜在的路径冲突
+venv_site_packages = os.path.join(os.path.dirname(__file__), "venv", "Lib", "site-packages")
+if os.path.exists(venv_site_packages):
+    sys.path.insert(0, venv_site_packages)
+
 load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
 
 # 导入 API 路由
