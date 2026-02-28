@@ -497,7 +497,7 @@ export const ConsoleScreen = React.memo<ConsoleScreenProps>(({ setFullScreen, ba
       setShowResult(true);
       setHasInitialized(true);
       if (setFullScreen) setFullScreen(true);
-    }, 800);
+    }, 150); // Speed up from 800ms to 150ms
   };
 
   // 2. 开始基准测试 (真正扣费和AI对话)
@@ -601,7 +601,8 @@ export const ConsoleScreen = React.memo<ConsoleScreenProps>(({ setFullScreen, ba
           clearInterval(interval);
           onAnalysisComplete(`${birthDate.year}年${birthDate.month}月 命盘解析`, baziData, [...messages, { ...aiMsg, text: fullText }], birthDetails);
         }
-      }, 15); // Speed up to 15ms
+      }, 5); // Speed up from 15ms to 5ms
+
 
     } catch (error: any) {
       console.error('基准测试启动失败:', error);
@@ -691,7 +692,7 @@ export const ConsoleScreen = React.memo<ConsoleScreenProps>(({ setFullScreen, ba
           return newMsgs;
         });
         i++;
-      }, 15);
+      }, 5); // Speed up from 15ms to 5ms
 
       // 如果在历史模式，流式结束后理论上应该更新，但由于闭包问题，暂不实时更新历史列表Context
       if (initialHistoryContext && onUpdateHistoryChat) {
