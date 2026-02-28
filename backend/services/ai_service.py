@@ -11,7 +11,7 @@ from utils.supabase_client import get_supabase
 from utils.prompts import EOGF_SYSTEM_PROMPT
 
 # 配置 MiniMax API
-MINIMAX_API_KEY = os.getenv("MINIMAX_API_KEY", "sk-cp-gKhqsabMOo2FD_UNIcQngYJQ0XyugOhZoOqQrhIRK0FZKc_WMO-T5Bg0jxOv5zpEVKz9yBMIgtnvmIERVdv3DyHIzwg__XtO-sWNtzuuUzMYkwkfZkLlosU")
+MINIMAX_API_KEY = os.getenv("MINIMAX_API_KEY")
 BASE_URL = "https://api.minimax.io/v1/chat/completions"
 
 # 安全日志
